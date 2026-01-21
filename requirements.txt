@@ -11,3 +11,4 @@ fpdf
 python-dotenv
 tiktoken
 pytesseract
+PyPDF2
