@@ -37,7 +37,7 @@ with st.sidebar:
 
 # --- Main App Logic ---
 
-st.title("Pitch Deck Analyst & Memo Generator")
+st.title("Pitch Deck Analyzer")
 st.markdown("Generated structured insights, investment memos, and executive summaries in seconds.")
 
 if "analysis_result" not in st.session_state:
