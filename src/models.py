@@ -36,6 +36,6 @@ class InvestmentMemo(BaseModel):
 
 class ExecutiveSummary(BaseModel):
     summary_bullet_points: List[str] = Field(description="5-7 bullet points summarizing the deal")
-    decision_outlook: str = Field(description="Neutral outlook: Positive, Neutral, or Negative leanings based on data")
-    confidence_score: int = Field(description="A score from 0-100 indicating how well this startup aligns with current market trends and problem spaces.")
-    market_alignment_reasoning: str = Field(description="Explanation for the confidence score based on current market trends.")
+    decision_outlook: Optional[str] = Field(default="Neutral", description="Neutral outlook: Positive, Neutral, or Negative leanings based on data")
+    confidence_score: Optional[int] = Field(default=50, description="A score from 0-100 indicating how well this startup aligns with current market trends and problem spaces.")
+    market_alignment_reasoning: Optional[str] = Field(default="Market alignment data unavailable.", description="Explanation for the confidence score based on current market trends.")

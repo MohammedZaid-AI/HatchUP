@@ -20,8 +20,17 @@ class MemoGenerator:
         system_prompt = """You are a professional VC Partner writing an internal investment memo.
 Tone: Professional, objective, analytical, non-hyped.
 Format: YC-style investment memo.
-Use the structured data provided to write detailed sections.
-Highlight missing info clearly."""
+Required Sections:
+- Company Overview
+- Problem & Solution Clarity
+- Market Opportunity
+- Product Differentiation
+- Traction & Metrics
+- Team Assessment
+- Risks & Concerns (List, Max 5-7 distinct items)
+- Open Questions (List, Max 5-7 distinct items)
+- Neutral Assessment (Final verdict)
+Constraint: Do NOT generate repetitive lists. Keep it concise."""
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -46,6 +55,8 @@ The summary must be readable in under 30 seconds.
 Format:
 - 5-7 punchy bullet points.
 - A final decision outlook (Neutral/Positive/Negative) based on the data.
+- A Market Confidence Score (0-100) assessing alignment with current trends.
+- A short Market Alignment Reasoning explaining the score.
 Avoid fluff."""
 
         prompt = ChatPromptTemplate.from_messages([
