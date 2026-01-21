@@ -1,0 +1,13 @@
+streamlit
+langchain
+langchain-groq
+langchain-community
+pandas
+openpyxl
+python-pptx
+pypdf
+pillow
+fpdf
+python-dotenv
+tiktoken
+pytesseract
