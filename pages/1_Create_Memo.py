@@ -71,6 +71,13 @@ if generate_btn and os.environ.get("GROQ_API_KEY"):
             generator = MemoGenerator(api_key=os.environ["GROQ_API_KEY"], model_name=model_choice)
             memo = generator.generate_memo(current_data)
             
+            # Update session state so the Research Engine can use this latest data
+            if "analysis_result" not in st.session_state or st.session_state.analysis_result is None:
+                st.session_state.analysis_result = {}
+            
+            st.session_state.analysis_result["data"] = current_data
+            st.session_state.analysis_result["memo"] = memo
+            
             st.subheader("Generated Memo")
             st.markdown(f"**Overview:** {memo.company_overview}")
             st.markdown(f"### Problem & Solution\n{memo.problem_solution_clarity}")
