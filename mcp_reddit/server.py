@@ -10,12 +10,6 @@ import sys
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
-reddit = praw.Reddit(
-    client_id=os.getenv("REDDIT_CLIENT_ID"),
-    client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-    user_agent=os.getenv("USER_AGENT", "echolab-mcp-reddit/0.1")
-)
-
 mcp=FastMCP("Reddit")
 
 @mcp.tool()
@@ -24,12 +18,25 @@ def fetch_reddit_posts_with_comments(subreddit="all", limit="5", comments_per_po
     Fetch hot posts and top comments from a subreddit.
     """
     try:
+        # Lazy initialization
+        client_id = os.getenv("REDDIT_CLIENT_ID")
+        client_secret = os.getenv("REDDIT_CLIENT_SECRET")
+        
+        if not client_id or not client_secret:
+            return {"error": "Reddit API credentials (REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET) are missing.", "posts": []}
+
+        reddit_client = praw.Reddit(
+            client_id=client_id,
+            client_secret=client_secret,
+            user_agent=os.getenv("USER_AGENT", "echolab-mcp-reddit/0.1")
+        )
+
         # Convert string inputs to int
         limit = int(limit)
         comments_per_post = int(comments_per_post)
 
         posts_data = []
-        sub = reddit.subreddit(subreddit)
+        sub = reddit_client.subreddit(subreddit)
         submissions = sub.hot(limit=limit)
 
         for post in submissions:
