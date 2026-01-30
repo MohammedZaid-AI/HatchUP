@@ -2,8 +2,13 @@ from mcp.server import FastMCP
 import praw
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+import sys
 
-load_dotenv()
+
+# Load .env from the same directory as this script
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 reddit = praw.Reddit(
     client_id=os.getenv("REDDIT_CLIENT_ID"),
@@ -58,5 +63,5 @@ def fetch_reddit_posts_with_comments(subreddit="all", limit="5", comments_per_po
 
 
 if __name__ == "__main__":
-    print("Reddit MCP Server is running...")
+    print("Reddit MCP Server is running...", file=sys.stderr)
     mcp.run(transport="stdio")

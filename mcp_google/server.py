@@ -3,8 +3,13 @@ from mcp.server import FastMCP
 import os
 import requests
 from dotenv import load_dotenv
+from pathlib import Path
+import sys
 
-load_dotenv()
+
+# Load .env from the same directory as this script
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 mcp = FastMCP("Google Search MCP")
 
@@ -38,5 +43,5 @@ def google_search(query: str, num_results: int = 5):
     return results
 
 if __name__ == "__main__":
-    print("Running Google Search MCP...")
+    print("Running Google Search MCP...", file=sys.stderr)
     mcp.run(transport="stdio")

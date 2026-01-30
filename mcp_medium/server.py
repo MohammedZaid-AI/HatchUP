@@ -1,5 +1,6 @@
 from mcp.server import FastMCP
 import requests
+import sys
 from bs4 import BeautifulSoup
 
 mcp = FastMCP("Medium MCP")
@@ -9,7 +10,7 @@ def search_medium(query: str, num_results: int = 5):
     """
     Search Medium for articles related to a query.
     """
-    print(f"[Medium MCP] Searching Medium for: {query}")
+    print(f"[Medium MCP] Searching Medium for: {query}", file=sys.stderr)
     url = f"https://medium.com/search?q={query.replace(' ', '%20')}"
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -30,5 +31,5 @@ def search_medium(query: str, num_results: int = 5):
     return articles
 
 if __name__ == "__main__":
-    print("Running Medium MCP...")
+    print("Running Medium MCP...", file=sys.stderr)
     mcp.run(transport="stdio")
