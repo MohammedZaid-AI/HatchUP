@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="content-header">
+    <h1>💬 HatchUp Chat</h1>
+    <p>General research assistant with live access to Reddit, Wikipedia, Google, and Medium.</p>
+</div>
+
+<div class="chat-container">
+    <div class="chat-messages" id="chat-messages">
+        <div class="message msg-assistant">
+            Hi! I'm HatchUp Chat. Ask me about markets, trends, or startups and I'll use real-time data to answer.
+        </div>
+    </div>
+
+    <div style="text-align: right; margin-bottom: 10px;">
+        <button class="btn-reset" onclick="clearChat()">Clear History</button>
+    </div>
+
+    <div class="ready-queries">
+        <div class="query-chip" onclick="askQuery('Latest trends in AI Agents')">Trends in AI Agents</div>
+        <div class="query-chip" onclick="askQuery('Competitors to Airbnb')">Competitors to Airbnb</div>
+        <div class="query-chip" onclick="askQuery('What is the market size of EV Batteries?')">EV Battery Market</div>
+    </div>
+
+    <div class="chat-input-area">
+        <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..."
+            onkeypress="if(event.key==='Enter') sendMessage()">
+        <button class="btn" onclick="sendMessage()">Send</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/hatchup_chat.js"></script>
+{% endblock %}

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}HatchUp VC{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Marked.js for Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-egg"></i> HatchUp VC
+            </div>
+            <nav>
+                <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
+                    <i class="fas fa-chart-line"></i> Analyzer & Memo
+                </a>
+                <a href="/research" class="nav-link {% if request.url.path == '/research' %}active{% endif %}">
+                    <i class="fas fa-search"></i> Deep Research
+                </a>
+                <a href="/hatchup_chat" class="nav-link {% if request.url.path == '/hatchup_chat' %}active{% endif %}">
+                    <i class="fas fa-comments"></i> HatchUp Chat
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Powered by <br><strong>HatchUp.ai</strong></p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

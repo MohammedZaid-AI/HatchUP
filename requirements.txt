@@ -1,4 +1,6 @@
-streamlit
+fastapi
+uvicorn[standard]
+python-multipart
 langchain
 langchain-groq
 langchain-community

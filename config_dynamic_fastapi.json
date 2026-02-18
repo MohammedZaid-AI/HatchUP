@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "@echolab/mcp-reddit": {
+      "command": "D:\\Zaids Work\\TrioAI phase2\\venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Zaids Work\\HatchUPVC Updated - Copy\\mcp_reddit\\server.py"
+      ]
+    },
+    "@echolab/mcp-wikipedia": {
+      "command": "D:\\Zaids Work\\TrioAI phase2\\venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Zaids Work\\HatchUPVC Updated - Copy\\mcp_wiki\\server.py"
+      ]
+    },
+    "@echolab/mcp-google": {
+      "command": "D:\\Zaids Work\\TrioAI phase2\\venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Zaids Work\\HatchUPVC Updated - Copy\\mcp_google\\server.py"
+      ]
+    },
+    "@echolab/mcp-medium": {
+      "command": "D:\\Zaids Work\\TrioAI phase2\\venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Zaids Work\\HatchUPVC Updated - Copy\\mcp_medium\\server.py"
+      ]
+    }
+  }
+}

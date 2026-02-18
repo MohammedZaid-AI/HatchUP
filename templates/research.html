@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="content-header">
+    <h1>🔎 Deep Research Engine</h1>
+    <p>Ask complex questions about the startup, validate claims, or generate specific correspondence based on the
+        analyzed data.</p>
+</div>
+
+<div class="chat-container">
+    <div class="chat-messages" id="chat-messages">
+        <div class="message msg-assistant">
+            Hello! I've studied the pitch deck and memo. Ask me anything about the startup.
+        </div>
+    </div>
+
+    <div style="text-align: right; margin-bottom: 10px;">
+        <button class="btn-reset" onclick="clearChat()">Clear History</button>
+    </div>
+
+    <!-- Ready Queries -->
+    <div class="ready-queries">
+        <div class="query-chip" onclick="askQuery('What are the 3 biggest risks not mentioned in the deck?')">3 Hidden
+            Risks?</div>
+        <div class="query-chip" onclick="askQuery('Evaluate the team\'s ability team to execute.')">Evaluate Team</div>
+        <div class="query-chip" onclick="askQuery('Is the TAM calculated realistically? Validate it.')">Validate TAM
+        </div>
+        <div class="query-chip" onclick="askQuery('Draft a polite pass (rejection) email.')">Draft Rejection Email</div>
+    </div>
+
+    <div class="chat-input-area">
+        <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..."
+            onkeypress="if(event.key==='Enter') sendMessage()">
+        <button class="btn" onclick="sendMessage()">Send</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/research.js"></script>
+{% endblock %}

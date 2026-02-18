@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="content-header">
+    <h1>Pitch Deck Analyzer</h1>
+    <p>Generate structured insights, investment memos, and executive summaries.</p>
+</div>
+
+<!-- Upload Section -->
+<div class="upload-container" id="upload-container">
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <i class="fas fa-cloud-upload-alt fa-3x"></i>
+        <h3>Upload Pitch Deck</h3>
+        <p>Supported formats: PDF, PPTX (Max 50MB)</p>
+        <input type="file" id="file-input" hidden accept=".pdf,.pptx,.ppt">
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <h3 id="loading-text">Analyzing Document...</h3>
+        <p>This may take up to a minute.</p>
+    </div>
+</div>
+
+<!-- Results Area -->
+<div id="results-container" class="results-container" style="display: none;">
+    <div class="startup-header">
+        <h2 id="startup-name">Startup Name</h2>
+        <span class="badge" id="funding-stage">Stage</span>
+        <button class="btn-reset" onclick="resetAnalysis()">New Analysis</button>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-target="summary-tab">🚀 Executive Summary</button>
+        <button class="tab-btn" data-target="data-tab">📊 Extracted Data</button>
+        <button class="tab-btn" data-target="risks-tab">🚩 Risks & Flags</button>
+        <button class="tab-btn" data-target="memo-tab">📝 Investment Memo</button>
+    </div>
+
+    <div id="summary-tab" class="tab-content active">
+        <div class="card outlook-card">
+            <h3>Outlook</h3>
+            <div id="outlook-verdict" class="verdict">NEUTRAL</div>
+            <p id="outlook-reasoning"></p>
+        </div>
+        <div class="card">
+            <h3>Key Highlights</h3>
+            <ul id="summary-highlights"></ul>
+        </div>
+    </div>
+
+    <div id="data-tab" class="tab-content">
+        <div class="grid-2">
+            <div class="card">
+                <h3>Problem</h3>
+                <textarea id="data-problem" class="data-input"></textarea>
+            </div>
+            <div class="card">
+                <h3>Solution</h3>
+                <textarea id="data-solution" class="data-input"></textarea>
+            </div>
+            <div class="card">
+                <h3>Product</h3>
+                <textarea id="data-product" class="data-input"></textarea>
+            </div>
+            <div class="card">
+                <h3>Market / TAM</h3>
+                <textarea id="data-market" class="data-input"></textarea>
+            </div>
+            <div class="card">
+                <h3>Traction</h3>
+                <textarea id="data-traction" class="data-input"></textarea>
+            </div>
+            <div class="card">
+                <h3>Team</h3>
+                <textarea id="data-team" class="data-input"></textarea>
+            </div>
+        </div>
+        <div class="actions">
+            <button class="btn" onclick="downloadExcel()">Download Excel</button>
+            <button class="btn" onclick="regenerateMemo()" style="background: #10b981;">Regenerate Memo</button>
+        </div>
+    </div>
+
+    <div id="risks-tab" class="tab-content">
+        <div class="grid-3">
+            <div class="card danger">
+                <h3>Red Flags</h3>
+                <ul id="list-red-flags"></ul>
+            </div>
+            <div class="card warning">
+                <h3>Weak Signals</h3>
+                <ul id="list-weak-signals"></ul>
+            </div>
+            <div class="card info">
+                <h3>Missing Info</h3>
+                <ul id="list-missing"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="memo-tab" class="tab-content">
+        <div class="card memo-paper">
+            <div class="memo-header">
+                <h3>Investment Memo</h3>
+                <p>Confidential • Internal Use Only</p>
+            </div>
+            <div id="memo-content" class="memo-body">
+                <!-- Content injected here -->
+            </div>
+        </div>
+        <div class="actions">
+            <button class="btn" onclick="downloadMemoText()">Download TXT</button>
+            <button class="btn" onclick="downloadMemoPDF()">Download PDF</button>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/analyzer.js"></script>
+{% endblock %}
