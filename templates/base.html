@@ -15,28 +15,50 @@
 
 <body>
     <div class="app-container">
-        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
                 <i class="fas fa-egg"></i> HatchUp VC
             </div>
-            <nav>
-                <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
-                    <i class="fas fa-chart-line"></i> Analyzer & Memo
-                </a>
-                <a href="/research" class="nav-link {% if request.url.path == '/research' %}active{% endif %}">
-                    <i class="fas fa-search"></i> Deep Research
-                </a>
-                <a href="/hatchup_chat" class="nav-link {% if request.url.path == '/hatchup_chat' %}active{% endif %}">
+
+            <nav class="sidebar-nav">
+                <a href="/chat" class="nav-link {% if request.url.path == '/chat' or request.url.path == '/hatchup_chat' %}active{% endif %}">
                     <i class="fas fa-comments"></i> HatchUp Chat
                 </a>
             </nav>
+
+            <div class="mode-container">
+                <p class="mode-title">Mode</p>
+                <div class="mode-toggle" id="mode-toggle" data-active-mode="{{ mode or 'vc' }}">
+                    <button type="button" class="mode-btn" data-mode="vc">VC Mode</button>
+                    <button type="button" class="mode-btn" data-mode="founder">Founder Mode</button>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav" id="vc-nav">
+                <p class="mode-title">VC Tools</p>
+                <a href="/vc/deck-analyzer" class="nav-link {% if request.url.path == '/vc/deck-analyzer' %}active{% endif %}">
+                    <i class="fas fa-chart-line"></i> Pitch Deck Analyzer
+                </a>
+                <a href="/vc/deep-research" class="nav-link {% if request.url.path == '/vc/deep-research' %}active{% endif %}">
+                    <i class="fas fa-search"></i> Deep Research
+                </a>
+                <a href="/vc/memo" class="nav-link {% if request.url.path == '/vc/memo' %}active{% endif %}">
+                    <i class="fas fa-file-signature"></i> Manual Memo Creator
+                </a>
+            </nav>
+
+            <nav class="sidebar-nav" id="founder-nav">
+                <p class="mode-title">Founder Tools</p>
+                <a href="/founder" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
+                    <i class="fas fa-rocket"></i> HatchUp Founders
+                </a>
+            </nav>
+
             <div class="sidebar-footer">
                 <p>Powered by <br><strong>HatchUp.ai</strong></p>
             </div>
         </aside>
 
-        <!-- Main Content -->
         <main class="main-content">
             {% block content %}{% endblock %}
         </main>

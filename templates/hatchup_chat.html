@@ -1,15 +1,17 @@
 {% extends "base.html" %}
 
+{% block title %}HatchUp Chat{% endblock %}
+
 {% block content %}
 <div class="content-header">
-    <h1>💬 HatchUp Chat</h1>
-    <p>General research assistant with live access to Reddit, Wikipedia, Google, and Medium.</p>
+    <h1>HatchUp Chat</h1>
+    <p>Persistent general research assistant with live Reddit, Wikipedia, Google, and Medium context.</p>
 </div>
 
 <div class="chat-container">
     <div class="chat-messages" id="chat-messages">
         <div class="message msg-assistant">
-            Hi! I'm HatchUp Chat. Ask me about markets, trends, or startups and I'll use real-time data to answer.
+            Hi! I am HatchUp Chat. Ask about markets, trends, or startups and I will pull live context.
         </div>
     </div>
 
@@ -18,9 +20,9 @@
     </div>
 
     <div class="ready-queries">
-        <div class="query-chip" onclick="askQuery('Latest trends in AI Agents')">Trends in AI Agents</div>
+        <div class="query-chip" onclick="askQuery('Latest trends in AI agents')">Trends in AI Agents</div>
         <div class="query-chip" onclick="askQuery('Competitors to Airbnb')">Competitors to Airbnb</div>
-        <div class="query-chip" onclick="askQuery('What is the market size of EV Batteries?')">EV Battery Market</div>
+        <div class="query-chip" onclick="askQuery('What is the market size of EV batteries?')">EV Battery Market</div>
     </div>
 
     <div class="chat-input-area">

@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 
+{% block title %}Pitch Deck Analyzer{% endblock %}
+
 {% block content %}
 <div class="content-header">
     <h1>Pitch Deck Analyzer</h1>
-    <p>Generate structured insights, investment memos, and executive summaries.</p>
+    <p>Upload a deck to extract structured VC-ready insights and keep context available across VC tools.</p>
 </div>
 
-<!-- Upload Section -->
 <div class="upload-container" id="upload-container">
     <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
         <i class="fas fa-cloud-upload-alt fa-3x"></i>
@@ -22,7 +23,6 @@
     </div>
 </div>
 
-<!-- Results Area -->
 <div id="results-container" class="results-container" style="display: none;">
     <div class="startup-header">
         <h2 id="startup-name">Startup Name</h2>
@@ -30,11 +30,15 @@
         <button class="btn-reset" onclick="resetAnalysis()">New Analysis</button>
     </div>
 
+    <div class="card">
+        <h3>Next Step</h3>
+        <p>Need to draft or refine the full memo? Continue in <a href="/vc/memo">Manual Memo Creator</a>.</p>
+    </div>
+
     <div class="tabs">
-        <button class="tab-btn active" data-target="summary-tab">🚀 Executive Summary</button>
-        <button class="tab-btn" data-target="data-tab">📊 Extracted Data</button>
-        <button class="tab-btn" data-target="risks-tab">🚩 Risks & Flags</button>
-        <button class="tab-btn" data-target="memo-tab">📝 Investment Memo</button>
+        <button class="tab-btn active" data-target="summary-tab">Executive Summary</button>
+        <button class="tab-btn" data-target="data-tab">Extracted Data</button>
+        <button class="tab-btn" data-target="risks-tab">Risks and Flags</button>
     </div>
 
     <div id="summary-tab" class="tab-content active">
@@ -98,25 +102,7 @@
             </div>
         </div>
     </div>
-
-    <div id="memo-tab" class="tab-content">
-        <div class="card memo-paper">
-            <div class="memo-header">
-                <h3>Investment Memo</h3>
-                <p>Confidential • Internal Use Only</p>
-            </div>
-            <div id="memo-content" class="memo-body">
-                <!-- Content injected here -->
-            </div>
-        </div>
-        <div class="actions">
-            <button class="btn" onclick="downloadMemoText()">Download TXT</button>
-            <button class="btn" onclick="downloadMemoPDF()">Download PDF</button>
-        </div>
-    </div>
-
 </div>
-
 {% endblock %}
 
 {% block scripts %}

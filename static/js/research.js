@@ -11,7 +11,7 @@ const STORAGE_KEY = 'hatchup_deep_research_history';
 const stateStr = localStorage.getItem('hatchup_analysis');
 if (!stateStr) {
     // Redirect if no data
-    window.location.href = "/";
+    window.location.href = "/vc/deck-analyzer";
 }
 const state = JSON.parse(stateStr || '{}');
 

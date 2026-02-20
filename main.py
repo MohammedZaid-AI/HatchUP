@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 
 # Load Env
@@ -32,12 +33,47 @@ app.include_router(memo.router)
 
 @app.get("/")
 async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return RedirectResponse(url="/vc/deck-analyzer", status_code=307)
+
+@app.get("/vc/deck-analyzer")
+async def read_vc_deck_analyzer(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "mode": "vc"}
+    )
+
+@app.get("/vc/deep-research")
+async def read_vc_deep_research(request: Request):
+    return templates.TemplateResponse(
+        "research.html",
+        {"request": request, "mode": "vc"}
+    )
+
+@app.get("/vc/memo")
+async def read_vc_memo(request: Request):
+    return templates.TemplateResponse(
+        "vc_memo.html",
+        {"request": request, "mode": "vc"}
+    )
+
+@app.get("/founder")
+async def read_founder(request: Request):
+    return templates.TemplateResponse(
+        "founder.html",
+        {"request": request, "mode": "founder"}
+    )
+
+@app.get("/chat")
+async def read_hatchup_chat(request: Request):
+    return templates.TemplateResponse(
+        "hatchup_chat.html",
+        {"request": request, "mode": "vc"}
+    )
 
 @app.get("/research")
-async def read_research(request: Request):
-    return templates.TemplateResponse("research.html", {"request": request})
+async def legacy_research():
+    return RedirectResponse(url="/vc/deep-research", status_code=307)
 
 @app.get("/hatchup_chat")
-async def read_hatchup_chat(request: Request):
-    return templates.TemplateResponse("hatchup_chat.html", {"request": request})
+async def legacy_hatchup_chat():
+    return RedirectResponse(url="/chat", status_code=307)

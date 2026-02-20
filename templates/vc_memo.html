@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Manual Memo Creator{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h1>Manual Memo Creator</h1>
+    <p>Edit extracted fields and regenerate a structured investment memo without losing your analysis session.</p>
+</div>
+
+<div id="memo-empty-state" class="card" style="display: none;">
+    <h3>No Analysis Found</h3>
+    <p>Upload and analyze a pitch deck first to create a memo.</p>
+    <a class="btn-link" href="/vc/deck-analyzer">Go to Pitch Deck Analyzer</a>
+</div>
+
+<div id="memo-editor" style="display: none;">
+    <div class="startup-header">
+        <h2 id="memo-startup-name">Startup Name</h2>
+        <span class="badge" id="memo-funding-stage">Stage</span>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <h3>Problem</h3>
+            <textarea id="memo-problem" class="data-input"></textarea>
+        </div>
+        <div class="card">
+            <h3>Solution</h3>
+            <textarea id="memo-solution" class="data-input"></textarea>
+        </div>
+        <div class="card">
+            <h3>Product</h3>
+            <textarea id="memo-product" class="data-input"></textarea>
+        </div>
+        <div class="card">
+            <h3>Market / TAM</h3>
+            <textarea id="memo-market" class="data-input"></textarea>
+        </div>
+        <div class="card">
+            <h3>Traction</h3>
+            <textarea id="memo-traction" class="data-input"></textarea>
+        </div>
+        <div class="card">
+            <h3>Team</h3>
+            <textarea id="memo-team" class="data-input"></textarea>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn" onclick="regenerateManualMemo()">Regenerate Memo</button>
+        <button class="btn" onclick="downloadMemoText()">Download TXT</button>
+        <button class="btn" onclick="downloadMemoPDF()">Download PDF</button>
+    </div>
+
+    <div class="card memo-paper">
+        <div class="memo-header">
+            <h3>Investment Memo</h3>
+            <p>Confidential | Internal Use Only</p>
+        </div>
+        <div id="manual-memo-content" class="memo-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vc_memo.js"></script>
+{% endblock %}
