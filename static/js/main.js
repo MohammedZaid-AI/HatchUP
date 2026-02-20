@@ -45,6 +45,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const storedMode = getStoredMode();
     const currentPath = window.location.pathname;
     const activeMode = shouldRedirectOnModeChange(currentPath) ? serverMode : storedMode;
+    let currentMode = activeMode;
 
     localStorage.setItem(MODE_STORAGE_KEY, activeMode);
     applyModeUi(activeMode);
@@ -54,6 +55,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
     switchInput.addEventListener('change', () => {
         const selectedMode = switchInput.checked ? 'founder' : 'vc';
+        if (selectedMode === currentMode) {
+            return;
+        }
+        currentMode = selectedMode;
+
         localStorage.setItem(MODE_STORAGE_KEY, selectedMode);
         applyModeUi(selectedMode);
 

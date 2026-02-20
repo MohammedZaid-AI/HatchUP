@@ -8,28 +8,36 @@
     <p>Ask targeted questions about the analyzed startup and generated memo.</p>
 </div>
 
-<div class="chat-container">
-    <div class="chat-messages" id="chat-messages">
-        <div class="message msg-assistant">
-            Hello! I have studied your pitch deck analysis and memo. Ask anything about the startup.
+<div id="research-empty-state" class="card">
+    <h3>No Deck Analysis Yet</h3>
+    <p>Run a pitch deck analysis first to unlock Deep Research insights.</p>
+    <a class="btn-link" href="/vc/deck-analyzer">Analyze Pitch Deck</a>
+</div>
+
+<div id="research-content" style="display: none;">
+    <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+            <div class="message msg-assistant">
+                Hello! I have studied your pitch deck analysis and memo. Ask anything about the startup.
+            </div>
         </div>
-    </div>
 
-    <div style="text-align: right; margin-bottom: 10px;">
-        <button class="btn-reset" onclick="clearChat()">Clear History</button>
-    </div>
+        <div style="text-align: right; margin-bottom: 10px;">
+            <button class="btn-reset" onclick="clearChat()">Clear History</button>
+        </div>
 
-    <div class="ready-queries">
-        <div class="query-chip" onclick="askQuery('What are the 3 biggest risks not mentioned in the deck?')">3 Hidden Risks?</div>
-        <div class="query-chip" onclick="askQuery('Evaluate the team ability to execute.')">Evaluate Team</div>
-        <div class="query-chip" onclick="askQuery('Is the TAM calculated realistically? Validate it.')">Validate TAM</div>
-        <div class="query-chip" onclick="askQuery('Draft a polite pass (rejection) email.')">Draft Rejection Email</div>
-    </div>
+        <div class="ready-queries">
+            <div class="query-chip" onclick="askQuery('What are the 3 biggest risks not mentioned in the deck?')">3 Hidden Risks?</div>
+            <div class="query-chip" onclick="askQuery('Evaluate the team ability to execute.')">Evaluate Team</div>
+            <div class="query-chip" onclick="askQuery('Is the TAM calculated realistically? Validate it.')">Validate TAM</div>
+            <div class="query-chip" onclick="askQuery('Draft a polite pass (rejection) email.')">Draft Rejection Email</div>
+        </div>
 
-    <div class="chat-input-area">
-        <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..."
-            onkeypress="if(event.key==='Enter') sendMessage()">
-        <button class="btn" onclick="sendMessage()">Send</button>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question..."
+                onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="btn" onclick="sendMessage()">Send</button>
+        </div>
     </div>
 </div>
 {% endblock %}

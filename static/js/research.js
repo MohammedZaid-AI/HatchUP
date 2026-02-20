@@ -1,5 +1,7 @@
 const messagesDiv = document.getElementById('chat-messages');
 const input = document.getElementById('chat-input');
+const researchEmptyState = document.getElementById('research-empty-state');
+const researchContent = document.getElementById('research-content');
 let chatHistory = []; // {role: str, content: str}
 
 // Unique Key for Deep Research Storage
@@ -7,16 +9,39 @@ let chatHistory = []; // {role: str, content: str}
 // But current requirement implies simpler "don't lose context".
 const STORAGE_KEY = 'hatchup_deep_research_history';
 
-// Load state of analysis
-const stateStr = localStorage.getItem('hatchup_analysis');
-if (!stateStr) {
-    // Redirect if no data
-    window.location.href = "/vc/deck-analyzer";
+function showResearchEmptyState() {
+    if (researchEmptyState) researchEmptyState.style.display = 'block';
+    if (researchContent) researchContent.style.display = 'none';
 }
-const state = JSON.parse(stateStr || '{}');
+
+function showResearchContent() {
+    if (researchEmptyState) researchEmptyState.style.display = 'none';
+    if (researchContent) researchContent.style.display = 'block';
+}
+
+// Load state of analysis safely
+const stateStr = localStorage.getItem('hatchup_analysis');
+let state = null;
+
+try {
+    state = stateStr ? JSON.parse(stateStr) : null;
+} catch (error) {
+    console.error('Invalid hatchup_analysis in localStorage', error);
+    state = null;
+}
+
+const hasAnalysis = !!(state && typeof state === 'object' && state.data);
+
+if (hasAnalysis) {
+    showResearchContent();
+} else {
+    showResearchEmptyState();
+}
 
 // Initialize from History
 window.addEventListener('DOMContentLoaded', () => {
+    if (!hasAnalysis) return;
+
     // Check if we have history for this specific startup? 
     // Ideally we should namespace by startup name, but for now single session persistence is fine.
 
@@ -47,6 +72,8 @@ window.askQuery = function (q) {
 }
 
 window.sendMessage = async function () {
+    if (!hasAnalysis) return;
+
     const text = input.value.trim();
     if (!text) return;
 
@@ -61,7 +88,7 @@ window.sendMessage = async function () {
         const payload = {
             messages: chatHistory, // Send full history
             data: state.data,
-            memo: state.memo
+            memo: state.memo || {}
         };
 
         const res = await fetch('/api/chat/research', {
@@ -91,6 +118,8 @@ window.sendMessage = async function () {
 
 // Function to clear chat
 window.clearChat = function () {
+    if (!hasAnalysis) return;
+
     if (confirm("Clear chat history?")) {
         localStorage.removeItem(STORAGE_KEY);
         location.reload();
