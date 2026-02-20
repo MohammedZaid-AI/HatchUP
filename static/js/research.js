@@ -3,6 +3,9 @@ const input = document.getElementById('chat-input');
 const researchEmptyState = document.getElementById('research-empty-state');
 const researchContent = document.getElementById('research-content');
 let chatHistory = []; // {role: str, content: str}
+let hasNormalizedAnalysis = false;
+let normalizedData = null;
+let normalizedMemo = {};
 
 // Unique Key for Deep Research Storage
 // Note: Ideally we should use the startup name as part of the key if we want multiple contexts.
@@ -19,28 +22,57 @@ function showResearchContent() {
     if (researchContent) researchContent.style.display = 'block';
 }
 
-// Load state of analysis safely
-const stateStr = localStorage.getItem('hatchup_analysis');
-let state = null;
+async function loadAnalysisFromSourceOfTruth() {
+    try {
+        const res = await fetch('/api/session/analysis', {
+            credentials: 'same-origin',
+            headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to load session analysis');
 
-try {
-    state = stateStr ? JSON.parse(stateStr) : null;
-} catch (error) {
-    console.error('Invalid hatchup_analysis in localStorage', error);
-    state = null;
-}
+        const payload = await res.json();
+        const analysis = payload.analysis;
+        if (payload.has_analysis && analysis && analysis.data) {
+            hasNormalizedAnalysis = true;
+            normalizedData = analysis.data;
+            normalizedMemo = analysis.memo || {};
+            // Keep local cache aligned with backend store.
+            localStorage.setItem('hatchup_analysis', JSON.stringify({
+                data: normalizedData,
+                memo: normalizedMemo,
+                summary: analysis.summary || {},
+            }));
+            return;
+        }
+    } catch (error) {
+        console.error('Session analysis lookup failed, trying local fallback', error);
+    }
 
-const hasAnalysis = !!(state && typeof state === 'object' && state.data);
+    // Local fallback for older sessions.
+    const stateStr = localStorage.getItem('hatchup_analysis');
+    let fallbackState = null;
+    try {
+        fallbackState = stateStr ? JSON.parse(stateStr) : null;
+    } catch (error) {
+        console.error('Invalid hatchup_analysis in localStorage', error);
+        fallbackState = null;
+    }
 
-if (hasAnalysis) {
-    showResearchContent();
-} else {
-    showResearchEmptyState();
+    if (fallbackState && fallbackState.data) {
+        hasNormalizedAnalysis = true;
+        normalizedData = fallbackState.data;
+        normalizedMemo = fallbackState.memo || {};
+    }
 }
 
 // Initialize from History
-window.addEventListener('DOMContentLoaded', () => {
-    if (!hasAnalysis) return;
+window.addEventListener('DOMContentLoaded', async () => {
+    await loadAnalysisFromSourceOfTruth();
+    if (!hasNormalizedAnalysis) {
+        showResearchEmptyState();
+        return;
+    }
+    showResearchContent();
 
     // Check if we have history for this specific startup? 
     // Ideally we should namespace by startup name, but for now single session persistence is fine.
@@ -72,7 +104,7 @@ window.askQuery = function (q) {
 }
 
 window.sendMessage = async function () {
-    if (!hasAnalysis) return;
+    if (!hasNormalizedAnalysis) return;
 
     const text = input.value.trim();
     if (!text) return;
@@ -87,13 +119,16 @@ window.sendMessage = async function () {
     try {
         const payload = {
             messages: chatHistory, // Send full history
-            data: state.data,
-            memo: state.memo || {}
+            data: normalizedData,
+            memo: normalizedMemo
         };
 
         const res = await fetch('/api/chat/research', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+            },
             body: JSON.stringify(payload)
         });
 
@@ -118,7 +153,7 @@ window.sendMessage = async function () {
 
 // Function to clear chat
 window.clearChat = function () {
-    if (!hasAnalysis) return;
+    if (!hasNormalizedAnalysis) return;
 
     if (confirm("Clear chat history?")) {
         localStorage.removeItem(STORAGE_KEY);

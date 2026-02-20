@@ -82,7 +82,10 @@ window.regenerateManualMemo = async function () {
         const updatedData = readUpdatedData();
         const response = await fetch('/api/generate_memo', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+            },
             body: JSON.stringify(updatedData)
         });
 
@@ -134,7 +137,10 @@ window.downloadMemoText = async function () {
     if (!memoState || !memoState.memo) return alert('No memo data available.');
     const res = await fetch('/api/export/text_memo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+        },
         body: JSON.stringify({ memo: memoState.memo, startup_name: memoState.data.startup_name })
     });
     triggerDownload(res, `${memoState.data.startup_name}_memo.txt`);
@@ -144,7 +150,10 @@ window.downloadMemoPDF = async function () {
     if (!memoState || !memoState.memo) return alert('No memo data available.');
     const res = await fetch('/api/export/pdf_memo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+        },
         body: JSON.stringify({ memo: memoState.memo, startup_name: memoState.data.startup_name })
     });
     triggerDownload(res, `${memoState.data.startup_name}_memo.pdf`);

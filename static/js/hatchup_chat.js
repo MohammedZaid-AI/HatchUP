@@ -49,7 +49,10 @@ window.sendMessage = async function () {
 
         const res = await fetch('/api/chat/hatchup', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+            },
             body: JSON.stringify(payload)
         });
 

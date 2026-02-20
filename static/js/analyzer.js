@@ -73,16 +73,35 @@ async function handleFile(file) {
 
         // 1. Analyze
         loadingText.innerText = "Reading & Analyzing Pitch Deck...";
-        const analyzeRes = await fetch('/api/analyze', { method: 'POST', body: formData });
+        const analyzeRes = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {},
+            body: formData
+        });
 
         if (!analyzeRes.ok) throw new Error(await analyzeRes.text());
         const deckData = await analyzeRes.json();
+
+        // Persist analysis immediately so dependent tools (Deep Research / Memo) can unlock.
+        const provisional = {
+            data: deckData,
+            memo: {},
+            summary: {
+                decision_outlook: "Pending",
+                market_alignment_reasoning: "Memo generation in progress.",
+                summary_bullet_points: []
+            }
+        };
+        localStorage.setItem('hatchup_analysis', JSON.stringify(provisional));
 
         // 2. Generate Memo
         loadingText.innerText = "Drafting Investment Memo...";
         const memoRes = await fetch('/api/generate_memo', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+            },
             body: JSON.stringify(deckData)
         });
 
@@ -96,6 +115,11 @@ async function handleFile(file) {
         };
 
         localStorage.setItem('hatchup_analysis', JSON.stringify(fullData));
+        // Keep backend session artifact aligned for Deep Research/Memo dependency flow.
+        await fetch('/api/session/analysis', {
+            credentials: 'same-origin',
+            headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {}
+        }).catch(() => null);
         renderResults(fullData);
 
     } catch (err) {
@@ -110,8 +134,8 @@ function renderResults(res) {
     resultsContainer.style.display = 'block';
 
     const data = res.data;
-    const memo = res.memo;
-    const summary = res.summary;
+    const memo = res.memo || {};
+    const summary = res.summary || {};
 
     // Header
     const sName = document.getElementById('startup-name');
@@ -123,21 +147,21 @@ function renderResults(res) {
     // Summary Tab
     const verdict = document.getElementById('outlook-verdict');
     if (verdict) {
-        verdict.innerText = summary.decision_outlook;
+        verdict.innerText = summary.decision_outlook || "Pending";
         verdict.className = 'verdict'; // Reset
-        const lower = summary.decision_outlook.toLowerCase();
+        const lower = (summary.decision_outlook || "").toLowerCase();
         if (lower.includes('positive')) verdict.style.color = 'green';
         else if (lower.includes('negative')) verdict.style.color = 'red';
         else verdict.style.color = 'gray';
     }
 
     const reasoning = document.getElementById('outlook-reasoning');
-    if (reasoning) reasoning.innerText = summary.market_alignment_reasoning;
+    if (reasoning) reasoning.innerText = summary.market_alignment_reasoning || "Analyze the deck or regenerate memo to see detailed reasoning.";
 
     const list = document.getElementById('summary-highlights');
     if (list) {
         list.innerHTML = "";
-        summary.summary_bullet_points.forEach(pt => {
+        (summary.summary_bullet_points || []).forEach(pt => {
             const li = document.createElement('li');
             li.innerText = pt;
             list.appendChild(li);
@@ -177,7 +201,7 @@ function renderResults(res) {
     if (memoDiv) {
         const formatField = (val) => {
             if (Array.isArray(val)) return '<ul>' + val.map(v => `<li>${v}</li>`).join('') + '</ul>';
-            return `<p>${val}</p>`;
+            return `<p>${val || "Not generated yet."}</p>`;
         };
 
         memoDiv.innerHTML = `
@@ -267,7 +291,10 @@ async function downloadExcel() {
 
     const res = await fetch('/api/export/excel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+        },
         body: JSON.stringify(state.data)
     });
     triggerDownload(res, `${state.data.startup_name}_data.xlsx`);
@@ -279,7 +306,10 @@ async function downloadMemoText() {
 
     const res = await fetch('/api/export/text_memo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+        },
         body: JSON.stringify({ memo: state.memo, startup_name: state.data.startup_name })
     });
     triggerDownload(res, `${state.data.startup_name}_memo.txt`);
@@ -291,7 +321,10 @@ async function downloadMemoPDF() {
 
     const res = await fetch('/api/export/pdf_memo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+        },
         body: JSON.stringify({ memo: state.memo, startup_name: state.data.startup_name })
     });
     triggerDownload(res, `${state.data.startup_name}_memo.pdf`);

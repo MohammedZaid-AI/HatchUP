@@ -1,7 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Response
 from src.document_parser import DocumentParser
 from src.analyzer import PitchDeckAnalyzer
 from src.models import PitchDeckData
+from src.analysis_store import ensure_session_id, upsert_data, load_analysis
 import os
 import shutil
 import tempfile
@@ -9,7 +10,7 @@ import tempfile
 router = APIRouter()
 
 @router.post("/api/analyze")
-async def analyze_deck(file: UploadFile = File(...)):
+async def analyze_deck(request: Request, response: Response, file: UploadFile = File(...)):
     if not os.environ.get("GROQ_API_KEY"):
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
 
@@ -46,6 +47,8 @@ async def analyze_deck(file: UploadFile = File(...)):
             # Extract Data
             analyzer = PitchDeckAnalyzer(api_key=os.environ["GROQ_API_KEY"])
             deck_data = analyzer.analyze_pitch_deck(raw_text)
+            session_id = ensure_session_id(request, response)
+            upsert_data(session_id, deck_data.dict())
             
             return deck_data.dict()
 
@@ -56,3 +59,14 @@ async def analyze_deck(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/session/analysis")
+async def get_session_analysis(request: Request, response: Response):
+    session_id = ensure_session_id(request, response)
+    analysis = load_analysis(session_id)
+    return {
+        "has_analysis": bool(analysis and analysis.get("data")),
+        "analysis": analysis,
+        "session_id": session_id,
+    }

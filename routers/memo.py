@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Body, Response, HTTPException
+from fastapi import APIRouter, Body, Response, HTTPException, Request
 from src.models import PitchDeckData, InvestmentMemo, ExecutiveSummary
 from src.memo_generator import MemoGenerator
 from src.exporter import Exporter
+from src.analysis_store import ensure_session_id, upsert_full
 import os
 
 router = APIRouter()
 
 @router.post("/api/generate_memo")
-async def generate_memo_endpoint(data: PitchDeckData):
+async def generate_memo_endpoint(request: Request, response: Response, data: PitchDeckData):
     """
     Generates an investment memo and executive summary from pitch deck data.
     """
@@ -19,6 +20,8 @@ async def generate_memo_endpoint(data: PitchDeckData):
         generator = MemoGenerator(api_key=api_key)
         memo = generator.generate_memo(data)
         summary = generator.generate_executive_summary(data, memo)
+        session_id = ensure_session_id(request, response)
+        upsert_full(session_id, data.dict(), memo.dict(), summary.dict())
         
         return {
             "memo": memo.dict(),
