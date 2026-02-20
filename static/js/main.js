@@ -16,7 +16,9 @@ function shouldRedirectOnModeChange(pathname) {
 function applyModeUi(mode) {
     const vcNav = document.getElementById('vc-nav');
     const founderNav = document.getElementById('founder-nav');
-    const modeButtons = document.querySelectorAll('.mode-btn');
+    const switchInput = document.getElementById('mode-switch-input');
+    const modeToggle = document.getElementById('mode-toggle');
+    const toolsLabel = document.getElementById('tools-section-label');
 
     if (vcNav) {
         vcNav.style.display = mode === 'vc' ? 'block' : 'none';
@@ -24,14 +26,15 @@ function applyModeUi(mode) {
     if (founderNav) {
         founderNav.style.display = mode === 'founder' ? 'block' : 'none';
     }
-
-    modeButtons.forEach((btn) => {
-        if (btn.dataset.mode === mode) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
+    if (switchInput) {
+        switchInput.checked = mode === 'founder';
+    }
+    if (modeToggle) {
+        modeToggle.dataset.activeMode = mode;
+    }
+    if (toolsLabel) {
+        toolsLabel.textContent = mode === 'founder' ? 'Founder Tools' : 'VC Tools';
+    }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -46,11 +49,11 @@ window.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem(MODE_STORAGE_KEY, activeMode);
     applyModeUi(activeMode);
 
-    modeToggle.addEventListener('click', (event) => {
-        const target = event.target.closest('.mode-btn');
-        if (!target) return;
+    const switchInput = document.getElementById('mode-switch-input');
+    if (!switchInput) return;
 
-        const selectedMode = target.dataset.mode === 'founder' ? 'founder' : 'vc';
+    switchInput.addEventListener('change', () => {
+        const selectedMode = switchInput.checked ? 'founder' : 'vc';
         localStorage.setItem(MODE_STORAGE_KEY, selectedMode);
         applyModeUi(selectedMode);
 

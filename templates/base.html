@@ -16,46 +16,58 @@
 <body>
     <div class="app-container">
         <aside class="sidebar">
-            <div class="logo">
-                <i class="fas fa-egg"></i> HatchUp VC
-            </div>
+            <div class="sidebar-top">
+                <div class="sidebar-group primary-group">
+                    <a href="/dashboard" class="logo" aria-label="HatchUp Dashboard">
+                        <img src="/static/img/hatchup-logo.svg" alt="HatchUp" class="logo-img">
+                        <span class="logo-text">HatchUp</span>
+                    </a>
 
-            <nav class="sidebar-nav">
-                <a href="/chat" class="nav-link {% if request.url.path == '/chat' or request.url.path == '/hatchup_chat' %}active{% endif %}">
-                    <i class="fas fa-comments"></i> HatchUp Chat
-                </a>
-            </nav>
+                    <nav class="sidebar-nav">
+                        <a href="/chat" class="nav-link {% if request.url.path == '/chat' or request.url.path == '/hatchup_chat' %}active{% endif %}">
+                            <i class="fas fa-comments"></i> HatchUp Chat
+                        </a>
+                    </nav>
+                </div>
 
-            <div class="mode-container">
-                <p class="mode-title">Mode</p>
-                <div class="mode-toggle" id="mode-toggle" data-active-mode="{{ mode or 'vc' }}">
-                    <button type="button" class="mode-btn" data-mode="vc">VC Mode</button>
-                    <button type="button" class="mode-btn" data-mode="founder">Founder Mode</button>
+                <div class="sidebar-group mode-group">
+                    <p class="mode-title">Mode</p>
+                    <div class="mode-toggle" id="mode-toggle" data-active-mode="{{ mode or 'vc' }}">
+                        <span class="mode-label-left">VC Mode</span>
+                        <label class="switch" for="mode-switch-input">
+                            <input id="mode-switch-input" type="checkbox" aria-label="Toggle VC and Founder mode">
+                            <span class="switch-slider"></span>
+                        </label>
+                        <span class="mode-label-right">Founder Mode</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <div class="sidebar-group tools-group">
+                    <p class="mode-title" id="tools-section-label">VC Tools</p>
+                    <nav class="sidebar-nav" id="vc-nav">
+                        <a href="/vc/deck-analyzer" class="nav-link {% if request.url.path == '/vc/deck-analyzer' %}active{% endif %}">
+                            <i class="fas fa-chart-line"></i> Pitch Deck Analyzer
+                        </a>
+                        <a href="/vc/deep-research" class="nav-link {% if request.url.path == '/vc/deep-research' %}active{% endif %}">
+                            <i class="fas fa-search"></i> Deep Research
+                        </a>
+                        <a href="/vc/memo" class="nav-link {% if request.url.path == '/vc/memo' %}active{% endif %}">
+                            <i class="fas fa-file-signature"></i> Manual Memo Creator
+                        </a>
+                    </nav>
+
+                    <nav class="sidebar-nav" id="founder-nav">
+                        <a href="/founder" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
+                            <i class="fas fa-rocket"></i> HatchUp Founders
+                        </a>
+                    </nav>
                 </div>
             </div>
 
-            <nav class="sidebar-nav" id="vc-nav">
-                <p class="mode-title">VC Tools</p>
-                <a href="/vc/deck-analyzer" class="nav-link {% if request.url.path == '/vc/deck-analyzer' %}active{% endif %}">
-                    <i class="fas fa-chart-line"></i> Pitch Deck Analyzer
-                </a>
-                <a href="/vc/deep-research" class="nav-link {% if request.url.path == '/vc/deep-research' %}active{% endif %}">
-                    <i class="fas fa-search"></i> Deep Research
-                </a>
-                <a href="/vc/memo" class="nav-link {% if request.url.path == '/vc/memo' %}active{% endif %}">
-                    <i class="fas fa-file-signature"></i> Manual Memo Creator
-                </a>
-            </nav>
-
-            <nav class="sidebar-nav" id="founder-nav">
-                <p class="mode-title">Founder Tools</p>
-                <a href="/founder" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
-                    <i class="fas fa-rocket"></i> HatchUp Founders
-                </a>
-            </nav>
-
             <div class="sidebar-footer">
-                <p>Powered by <br><strong>HatchUp.ai</strong></p>
+                <p>Powered by <strong>HatchUp.ai</strong></p>
             </div>
         </aside>
 
