@@ -32,11 +32,18 @@ app.include_router(chat.router)
 app.include_router(memo.router)
 
 @app.get("/")
-async def read_root():
-    return RedirectResponse(url="/dashboard", status_code=307)
+async def read_root(request: Request):
+    return templates.TemplateResponse(
+        "home.html",
+        {"request": request}
+    )
 
 @app.get("/dashboard")
 async def read_dashboard():
+    return RedirectResponse(url="/vc", status_code=307)
+
+@app.get("/vc")
+async def read_vc_root():
     return RedirectResponse(url="/vc/deck-analyzer", status_code=307)
 
 @app.get("/vc/deck-analyzer")

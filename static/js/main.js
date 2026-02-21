@@ -1,8 +1,14 @@
 const MODE_STORAGE_KEY = 'hatchup_mode';
+const MODE_STORAGE_KEY_LEGACY = 'mode';
 
 function getStoredMode() {
-    const mode = localStorage.getItem(MODE_STORAGE_KEY);
+    const mode = localStorage.getItem(MODE_STORAGE_KEY) || localStorage.getItem(MODE_STORAGE_KEY_LEGACY);
     return mode === 'founder' ? 'founder' : 'vc';
+}
+
+function persistMode(mode) {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+    localStorage.setItem(MODE_STORAGE_KEY_LEGACY, mode);
 }
 
 function getDefaultRouteForMode(mode) {
@@ -54,7 +60,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const activeMode = shouldRedirectOnModeChange(currentPath) ? serverMode : storedMode;
     let currentMode = activeMode;
 
-    localStorage.setItem(MODE_STORAGE_KEY, activeMode);
+    persistMode(activeMode);
     applyModeUi(activeMode);
 
     const switchInput = document.getElementById('mode-switch-input');
@@ -67,7 +73,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         currentMode = selectedMode;
 
-        localStorage.setItem(MODE_STORAGE_KEY, selectedMode);
+        persistMode(selectedMode);
         applyModeUi(selectedMode);
 
         if (shouldRedirectOnModeChange(window.location.pathname)) {
