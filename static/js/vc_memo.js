@@ -1,26 +1,23 @@
-const MEMO_STORAGE_KEY = 'hatchup_analysis';
 let memoState = null;
 
-window.addEventListener('DOMContentLoaded', () => {
-    const stateStr = localStorage.getItem(MEMO_STORAGE_KEY);
-    if (!stateStr) {
-        showMemoEmptyState();
-        return;
-    }
-
+window.addEventListener('DOMContentLoaded', async () => {
     try {
-        memoState = JSON.parse(stateStr);
+        await window.refreshAnalysisWorkspace();
     } catch (error) {
-        console.error('Invalid memo state', error);
+        console.error('Workspace refresh failed', error);
+    }
+
+    const active = window.getActiveAnalysis();
+    if (!active || !active.deck) {
         showMemoEmptyState();
         return;
     }
 
-    if (!memoState || !memoState.data) {
-        showMemoEmptyState();
-        return;
-    }
-
+    memoState = {
+        data: active.deck,
+        memo: active.memo || {},
+        summary: active.insights || {}
+    };
     showMemoEditor();
     hydrateFields(memoState.data);
     renderMemo(memoState.memo);
@@ -48,7 +45,6 @@ function setValue(id, value) {
 function hydrateFields(data) {
     const startupName = document.getElementById('memo-startup-name');
     const stage = document.getElementById('memo-funding-stage');
-
     if (startupName) startupName.innerText = data.startup_name || 'Startup';
     if (stage) stage.innerText = data.funding_ask_stage || 'Unknown Stage';
 
@@ -88,7 +84,6 @@ window.regenerateManualMemo = async function () {
             },
             body: JSON.stringify(updatedData)
         });
-
         if (!response.ok) throw new Error(await response.text());
         const memoData = await response.json();
 
@@ -97,8 +92,7 @@ window.regenerateManualMemo = async function () {
             memo: memoData.memo,
             summary: memoData.summary
         };
-
-        localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(memoState));
+        await window.refreshAnalysisWorkspace();
         renderMemo(memoState.memo);
         alert('Memo regenerated successfully.');
     } catch (error) {
@@ -131,7 +125,7 @@ function renderMemo(memo) {
         <h3>Risks</h3>${formatField(memo.risks_concerns)}
         <h3>Assessment</h3>${formatField(memo.neutral_assessment)}
     `;
-};
+}
 
 window.downloadMemoText = async function () {
     if (!memoState || !memoState.memo) return alert('No memo data available.');
@@ -141,9 +135,9 @@ window.downloadMemoText = async function () {
             'Content-Type': 'application/json',
             ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
         },
-        body: JSON.stringify({ memo: memoState.memo, startup_name: memoState.data.startup_name })
+        body: JSON.stringify({ memo: memoState.memo, startup_name: memoState.data.startup_name || 'startup' })
     });
-    triggerDownload(res, `${memoState.data.startup_name}_memo.txt`);
+    triggerDownload(res, `${memoState.data.startup_name || 'startup'}_memo.txt`);
 };
 
 window.downloadMemoPDF = async function () {
@@ -154,9 +148,9 @@ window.downloadMemoPDF = async function () {
             'Content-Type': 'application/json',
             ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
         },
-        body: JSON.stringify({ memo: memoState.memo, startup_name: memoState.data.startup_name })
+        body: JSON.stringify({ memo: memoState.memo, startup_name: memoState.data.startup_name || 'startup' })
     });
-    triggerDownload(res, `${memoState.data.startup_name}_memo.pdf`);
+    triggerDownload(res, `${memoState.data.startup_name || 'startup'}_memo.pdf`);
 };
 
 async function triggerDownload(response, filename) {

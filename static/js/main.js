@@ -19,6 +19,7 @@ function applyModeUi(mode) {
     const switchInput = document.getElementById('mode-switch-input');
     const modeToggle = document.getElementById('mode-toggle');
     const toolsLabel = document.getElementById('tools-section-label');
+    const pastAnalysesPanel = document.getElementById('past-analyses-panel');
 
     if (vcNav) {
         vcNav.style.display = mode === 'vc' ? 'block' : 'none';
@@ -34,6 +35,12 @@ function applyModeUi(mode) {
     }
     if (toolsLabel) {
         toolsLabel.textContent = mode === 'founder' ? 'Founder Tools' : 'VC Tools';
+    }
+    if (pastAnalysesPanel) {
+        pastAnalysesPanel.style.display = mode === 'vc' ? 'flex' : 'none';
+    }
+    if (window.refreshAnalysisWorkspace && mode === 'vc') {
+        window.refreshAnalysisWorkspace().catch(() => null);
     }
 }
 

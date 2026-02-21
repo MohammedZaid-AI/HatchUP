@@ -21,9 +21,10 @@ async def generate_memo_endpoint(request: Request, response: Response, data: Pit
         memo = generator.generate_memo(data)
         summary = generator.generate_executive_summary(data, memo)
         session_id = ensure_session_id(request, response)
-        upsert_full(session_id, data.dict(), memo.dict(), summary.dict())
+        updated = upsert_full(session_id, data.dict(), memo.dict(), summary.dict())
         
         return {
+            "analysis_id": updated["analysis_id"],
             "memo": memo.dict(),
             "summary": summary.dict()
         }

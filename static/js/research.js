@@ -2,15 +2,11 @@ const messagesDiv = document.getElementById('chat-messages');
 const input = document.getElementById('chat-input');
 const researchEmptyState = document.getElementById('research-empty-state');
 const researchContent = document.getElementById('research-content');
-let chatHistory = []; // {role: str, content: str}
-let hasNormalizedAnalysis = false;
-let normalizedData = null;
-let normalizedMemo = {};
 
-// Unique Key for Deep Research Storage
-// Note: Ideally we should use the startup name as part of the key if we want multiple contexts.
-// But current requirement implies simpler "don't lose context".
-const STORAGE_KEY = 'hatchup_deep_research_history';
+let chatHistory = [];
+let hasAnalysis = false;
+let activeDeck = null;
+let activeMemo = {};
 
 function showResearchEmptyState() {
     if (researchEmptyState) researchEmptyState.style.display = 'block';
@@ -22,107 +18,74 @@ function showResearchContent() {
     if (researchContent) researchContent.style.display = 'block';
 }
 
-async function loadAnalysisFromSourceOfTruth() {
+async function persistResearch() {
     try {
-        const res = await fetch('/api/session/analysis', {
+        await fetch('/api/session/analysis/research', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+            },
             credentials: 'same-origin',
-            headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {}
+            body: JSON.stringify({ messages: chatHistory })
         });
-        if (!res.ok) throw new Error('Failed to load session analysis');
-
-        const payload = await res.json();
-        const analysis = payload.analysis;
-        if (payload.has_analysis && analysis && analysis.data) {
-            hasNormalizedAnalysis = true;
-            normalizedData = analysis.data;
-            normalizedMemo = analysis.memo || {};
-            // Keep local cache aligned with backend store.
-            localStorage.setItem('hatchup_analysis', JSON.stringify({
-                data: normalizedData,
-                memo: normalizedMemo,
-                summary: analysis.summary || {},
-            }));
-            return;
-        }
     } catch (error) {
-        console.error('Session analysis lookup failed, trying local fallback', error);
-    }
-
-    // Local fallback for older sessions.
-    const stateStr = localStorage.getItem('hatchup_analysis');
-    let fallbackState = null;
-    try {
-        fallbackState = stateStr ? JSON.parse(stateStr) : null;
-    } catch (error) {
-        console.error('Invalid hatchup_analysis in localStorage', error);
-        fallbackState = null;
-    }
-
-    if (fallbackState && fallbackState.data) {
-        hasNormalizedAnalysis = true;
-        normalizedData = fallbackState.data;
-        normalizedMemo = fallbackState.memo || {};
+        console.error('Failed to persist research history', error);
     }
 }
 
-// Initialize from History
+async function loadActiveAnalysis() {
+    try {
+        await window.refreshAnalysisWorkspace();
+        const active = window.getActiveAnalysis();
+        if (!active || !active.deck) return null;
+        return active;
+    } catch (error) {
+        console.error('Failed to load active analysis', error);
+        return null;
+    }
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
-    await loadAnalysisFromSourceOfTruth();
-    if (!hasNormalizedAnalysis) {
+    const active = await loadActiveAnalysis();
+    if (!active) {
         showResearchEmptyState();
         return;
     }
+
+    hasAnalysis = true;
+    activeDeck = active.deck;
+    activeMemo = active.memo || {};
     showResearchContent();
 
-    // Check if we have history for this specific startup? 
-    // Ideally we should namespace by startup name, but for now single session persistence is fine.
-
-    // Clear default welcome message if we have history
-    console.log("Loading history...");
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (saved) {
-        try {
-            const hist = JSON.parse(saved);
-            if (hist && hist.length > 0) {
-                messagesDiv.innerHTML = ""; // process clean slate
-                chatHistory = []; // helper appendMessage will re-push 
-
-                hist.forEach(msg => {
-                    // Pass false for saveToStorage so we don't re-trigger localStorage writes during load
-                    appendMessage(msg.role, msg.content, false, false);
-                });
-            }
-        } catch (e) { console.error("Error parsing history", e); }
+    const saved = active.research || [];
+    if (saved.length > 0) {
+        messagesDiv.innerHTML = '';
+        chatHistory = [];
+        saved.forEach((msg) => appendMessage(msg.role, msg.content, false, false));
     }
 });
 
-// Helper to fill input from chips
 window.askQuery = function (q) {
     input.value = q;
-    sendMessage();
-}
+    window.sendMessage();
+};
 
 window.sendMessage = async function () {
-    if (!hasNormalizedAnalysis) return;
-
+    if (!hasAnalysis) return;
     const text = input.value.trim();
     if (!text) return;
 
-    // UI: Add User Message
-    input.value = "";
-    appendMessage("user", text, false, true);
-
-    // UI: Add Thinking Placeholder
-    const thinkingId = appendMessage("assistant", "Thinking...", true, false);
+    input.value = '';
+    appendMessage('user', text, false, true);
+    const thinkingId = appendMessage('assistant', 'Thinking...', true, false);
 
     try {
         const payload = {
-            messages: chatHistory, // Send full history
-            data: normalizedData,
-            memo: normalizedMemo
+            messages: chatHistory,
+            data: activeDeck,
+            memo: activeMemo
         };
-
         const res = await fetch('/api/chat/research', {
             method: 'POST',
             headers: {
@@ -131,63 +94,43 @@ window.sendMessage = async function () {
             },
             body: JSON.stringify(payload)
         });
-
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
 
-        // Remove thinking
         const thinkingEl = document.getElementById(thinkingId);
         if (thinkingEl) thinkingEl.remove();
-
-        // Add Actual Response
-        appendMessage("assistant", data.response, false, true);
-
+        appendMessage('assistant', data.response, false, true);
     } catch (err) {
         const thinkingEl = document.getElementById(thinkingId);
         if (thinkingEl) {
-            thinkingEl.innerText = "Error: " + err.message;
+            thinkingEl.innerText = 'Error: ' + err.message;
             thinkingEl.style.color = 'red';
         }
     }
-}
+};
 
-// Function to clear chat
-window.clearChat = function () {
-    if (!hasNormalizedAnalysis) return;
+window.clearChat = async function () {
+    if (!hasAnalysis) return;
+    const confirmed = confirm('Clear chat history for this analysis?');
+    if (!confirmed) return;
+    chatHistory = [];
+    await persistResearch();
+    window.location.reload();
+};
 
-    if (confirm("Clear chat history?")) {
-        localStorage.removeItem(STORAGE_KEY);
-        location.reload();
-    }
-}
-
-/**
- * Appends message to UI and History
- * @param {string} role 'user' or 'assistant'
- * @param {string} content 
- * @param {boolean} isTemporary If true, does not save to history
- * @param {boolean} saveToStorage If true (default), updates localStorage
- */
-function appendMessage(role, content, isTemporary = false, saveToStorage = true) {
+function appendMessage(role, content, isTemporary = false, persist = true) {
     const div = document.createElement('div');
     div.className = `message msg-${role}`;
-
-    // Use Marked.js for rendering
-    // Configure marked to not sanitize if trusting input, or sanitize separately.
-    // Assuming backend is safe LLM output.
     div.innerHTML = marked.parse(content);
-
     const id = `msg-${Date.now()}-${Math.random()}`;
     div.id = id;
-
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
     if (!isTemporary) {
         chatHistory.push({ role, content });
-
-        if (saveToStorage) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory));
+        if (persist) {
+            persistResearch();
         }
     }
     return id;

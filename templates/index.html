@@ -4,8 +4,13 @@
 
 {% block content %}
 <div class="content-header">
-    <h1>Pitch Deck Analyzer</h1>
-    <p>Upload a deck to extract structured VC-ready insights and keep context available across VC tools.</p>
+    <div class="content-header-copy">
+        <h1>Pitch Deck Analyzer</h1>
+        <p>Upload a deck to extract structured VC-ready insights and keep context available across VC tools.</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn-reset" onclick="startNewAnalysis()">New Analysis</button>
+    </div>
 </div>
 
 <div class="upload-container" id="upload-container">
@@ -27,7 +32,6 @@
     <div class="startup-header">
         <h2 id="startup-name">Startup Name</h2>
         <span class="badge" id="funding-stage">Stage</span>
-        <button class="btn-reset" onclick="resetAnalysis()">New Analysis</button>
     </div>
 
     <div class="card">

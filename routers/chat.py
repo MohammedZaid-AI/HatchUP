@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Request, Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import asyncio
 from dotenv import load_dotenv
+from src.analysis_store import ensure_session_id, get_active_analysis
 
 # LangChain Imports
 from langchain_groq import ChatGroq
@@ -26,8 +27,8 @@ class Message(BaseModel):
 
 class ResearchRequest(BaseModel):
     messages: List[Message]
-    data: Dict[str, Any] # PitchDeckData
-    memo: Dict[str, Any] # InvestmentMemo
+    data: Optional[Dict[str, Any]] = None  # PitchDeckData
+    memo: Optional[Dict[str, Any]] = None  # InvestmentMemo
 
 class ChatRequest(BaseModel):
     messages: List[Message]
@@ -35,7 +36,7 @@ class ChatRequest(BaseModel):
 
 # --- Deep Research Logic ---
 @router.post("/api/chat/research")
-async def deep_research(request: ResearchRequest):
+async def deep_research(payload: ResearchRequest, request: Request, response: Response):
     """
     RAG-based chat on the Pitch Deck Data and Investment Memo.
     Replicates pages/2_Research_Engine.py
@@ -45,10 +46,21 @@ async def deep_research(request: ResearchRequest):
         if not api_key:
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not found")
 
+        data_obj = payload.data
+        memo_obj = payload.memo
+        analysis_id = None
+        if not data_obj:
+            session_id = ensure_session_id(request, response)
+            active = get_active_analysis(session_id)
+            analysis_id = active["analysis_id"]
+            data_obj = active["analysis"].get("deck")
+            memo_obj = active["analysis"].get("memo") or {}
+        if not data_obj:
+            raise HTTPException(status_code=400, detail="No active deck analysis found")
+
         # Reconstruct context
-        # We received dicts, dump them to JSON string for context
-        data_json = json.dumps(request.data, indent=2)
-        memo_json = json.dumps(request.memo, indent=2)
+        data_json = json.dumps(data_obj, indent=2)
+        memo_json = json.dumps(memo_obj or {}, indent=2)
 
         context_str = f"""
         *** STARTUP ANALYZED DATA ***
@@ -81,7 +93,7 @@ async def deep_research(request: ResearchRequest):
         """
 
         # Get last user message
-        user_query = request.messages[-1].content
+        user_query = payload.messages[-1].content
 
         llm = ChatGroq(
             temperature=0.5,
@@ -98,9 +110,9 @@ async def deep_research(request: ResearchRequest):
         
         # We will return the full response string (not streaming for simplicity in this MVP migration phase 1)
         # If streaming is needed, we'd use StreamingResponse
-        response = await chain.ainvoke({"context": context_str, "question": user_query})
+        llm_response = await chain.ainvoke({"context": context_str, "question": user_query})
         
-        return {"response": response.content}
+        return {"response": llm_response.content, "analysis_id": analysis_id}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

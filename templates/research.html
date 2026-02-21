@@ -4,8 +4,13 @@
 
 {% block content %}
 <div class="content-header">
-    <h1>Deep Research Engine</h1>
-    <p>Ask targeted questions about the analyzed startup and generated memo.</p>
+    <div class="content-header-copy">
+        <h1>Deep Research Engine</h1>
+        <p>Ask targeted questions about the analyzed startup and generated memo.</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn-reset" onclick="startNewAnalysis()">New Analysis</button>
+    </div>
 </div>
 
 <div id="research-empty-state" class="card">

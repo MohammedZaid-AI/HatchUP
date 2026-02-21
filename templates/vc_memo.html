@@ -4,8 +4,13 @@
 
 {% block content %}
 <div class="content-header">
-    <h1>Manual Memo Creator</h1>
-    <p>Edit extracted fields and regenerate a structured investment memo without losing your analysis session.</p>
+    <div class="content-header-copy">
+        <h1>Manual Memo Creator</h1>
+        <p>Edit extracted fields and regenerate a structured investment memo without losing your analysis session.</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn-reset" onclick="startNewAnalysis()">New Analysis</button>
+    </div>
 </div>
 
 <div id="memo-empty-state" class="card" style="display: none;">

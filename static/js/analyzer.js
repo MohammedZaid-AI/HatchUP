@@ -1,11 +1,9 @@
 const fileInput = document.getElementById('file-input');
 const dropZone = document.getElementById('drop-zone');
 const loadingOverlay = document.getElementById('loading-overlay');
-const uploadContainer = document.getElementById('upload-container');
 const resultsContainer = document.getElementById('results-container');
 const loadingText = document.getElementById('loading-text');
 
-// Drag & Drop Handling
 if (dropZone) {
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -29,73 +27,43 @@ if (fileInput) {
     });
 }
 
-// Check for existing data on load
-// Check for existing data on load
-window.addEventListener('DOMContentLoaded', () => {
-    const saved = localStorage.getItem('hatchup_analysis');
-    if (saved) {
-        try {
-            const data = JSON.parse(saved);
-            if (data && data.data) {
-                // Determine if we should show results
-                // Hide drop zone, show results
-                document.getElementById('drop-zone').style.display = 'none';
-                renderResults(data);
-            }
-        } catch (e) {
-            console.error("Error loading saved analysis", e);
-        }
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        await window.refreshAnalysisWorkspace();
+    } catch (error) {
+        console.error('Workspace refresh failed', error);
+    }
+    const active = window.getActiveAnalysis();
+    if (active && active.deck) {
+        if (dropZone) dropZone.style.display = 'none';
+        renderResults({
+            data: active.deck,
+            memo: active.memo || {},
+            summary: active.insights || {}
+        });
     }
 });
 
-function resetAnalysis() {
-    if (confirm("Start a new analysis? This will clear current data.")) {
-        localStorage.removeItem('hatchup_analysis');
-        // Also clear chat histories as they are related to this startup?
-        // User asked to preserve chat context, but if we start *new* analysis, maybe we should clear chat?
-        // Usually "New Analysis" implies fresh start. Let's clear deep research context at least since it depends on the deck.
-        // HatchUp Chat (general) can stay.
-        localStorage.removeItem('hatchup_deep_research_history');
-        location.reload();
-    }
-}
-
 async function handleFile(file) {
     if (!file) return;
-
-    // UI Update
-    document.getElementById('drop-zone').style.display = 'none';
-    loadingOverlay.style.display = 'block';
+    if (dropZone) dropZone.style.display = 'none';
+    if (loadingOverlay) loadingOverlay.style.display = 'block';
 
     try {
         const formData = new FormData();
         formData.append('file', file);
 
-        // 1. Analyze
-        loadingText.innerText = "Reading & Analyzing Pitch Deck...";
+        if (loadingText) loadingText.innerText = 'Reading & Analyzing Pitch Deck...';
         const analyzeRes = await fetch('/api/analyze', {
             method: 'POST',
             headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {},
             body: formData
         });
-
         if (!analyzeRes.ok) throw new Error(await analyzeRes.text());
-        const deckData = await analyzeRes.json();
+        const analyzePayload = await analyzeRes.json();
+        const deckData = analyzePayload.deck || analyzePayload;
 
-        // Persist analysis immediately so dependent tools (Deep Research / Memo) can unlock.
-        const provisional = {
-            data: deckData,
-            memo: {},
-            summary: {
-                decision_outlook: "Pending",
-                market_alignment_reasoning: "Memo generation in progress.",
-                summary_bullet_points: []
-            }
-        };
-        localStorage.setItem('hatchup_analysis', JSON.stringify(provisional));
-
-        // 2. Generate Memo
-        loadingText.innerText = "Drafting Investment Memo...";
+        if (loadingText) loadingText.innerText = 'Drafting Investment Memo...';
         const memoRes = await fetch('/api/generate_memo', {
             method: 'POST',
             headers: {
@@ -104,74 +72,71 @@ async function handleFile(file) {
             },
             body: JSON.stringify(deckData)
         });
-
         if (!memoRes.ok) throw new Error(await memoRes.text());
-        const memoData = await memoRes.json(); // {memo, summary}
+        const memoData = await memoRes.json();
 
-        const fullData = {
+        await window.refreshAnalysisWorkspace();
+        renderResults({
             data: deckData,
-            memo: memoData.memo,
-            summary: memoData.summary
-        };
-
-        localStorage.setItem('hatchup_analysis', JSON.stringify(fullData));
-        // Keep backend session artifact aligned for Deep Research/Memo dependency flow.
-        await fetch('/api/session/analysis', {
-            credentials: 'same-origin',
-            headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {}
-        }).catch(() => null);
-        renderResults(fullData);
-
+            memo: memoData.memo || {},
+            summary: memoData.summary || {}
+        });
     } catch (err) {
         console.error(err);
-        alert("Analysis Failed: " + err.message);
-        location.reload();
+        alert('Analysis Failed: ' + err.message);
+        window.location.reload();
     }
 }
 
+function getCurrentAnalysisState() {
+    const active = window.getActiveAnalysis();
+    if (!active || !active.deck) return null;
+    return {
+        data: active.deck,
+        memo: active.memo || {},
+        summary: active.insights || {}
+    };
+}
+
 function renderResults(res) {
-    loadingOverlay.style.display = 'none';
-    resultsContainer.style.display = 'block';
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'block';
 
-    const data = res.data;
-    const memo = res.memo || {};
+    const data = res.data || {};
     const summary = res.summary || {};
+    const memo = res.memo || {};
 
-    // Header
     const sName = document.getElementById('startup-name');
-    if (sName) sName.innerText = data.startup_name;
-
+    if (sName) sName.innerText = data.startup_name || 'Startup';
     const sStage = document.getElementById('funding-stage');
-    if (sStage) sStage.innerText = data.funding_ask_stage || "Unknown Stage";
+    if (sStage) sStage.innerText = data.funding_ask_stage || 'Unknown Stage';
 
-    // Summary Tab
     const verdict = document.getElementById('outlook-verdict');
     if (verdict) {
-        verdict.innerText = summary.decision_outlook || "Pending";
-        verdict.className = 'verdict'; // Reset
-        const lower = (summary.decision_outlook || "").toLowerCase();
+        verdict.innerText = summary.decision_outlook || 'Pending';
+        verdict.className = 'verdict';
+        const lower = (summary.decision_outlook || '').toLowerCase();
         if (lower.includes('positive')) verdict.style.color = 'green';
         else if (lower.includes('negative')) verdict.style.color = 'red';
         else verdict.style.color = 'gray';
     }
 
     const reasoning = document.getElementById('outlook-reasoning');
-    if (reasoning) reasoning.innerText = summary.market_alignment_reasoning || "Analyze the deck or regenerate memo to see detailed reasoning.";
+    if (reasoning) reasoning.innerText = summary.market_alignment_reasoning || 'Generate memo to see detailed reasoning.';
 
     const list = document.getElementById('summary-highlights');
     if (list) {
-        list.innerHTML = "";
-        (summary.summary_bullet_points || []).forEach(pt => {
+        list.innerHTML = '';
+        (summary.summary_bullet_points || []).forEach((pt) => {
             const li = document.createElement('li');
             li.innerText = pt;
             list.appendChild(li);
         });
     }
 
-    // Data Tab - UPDATED to use .value for Textarea
     const setText = (id, txt) => {
         const el = document.getElementById(id);
-        if (el) el.value = txt || ""; // Use value for textarea
+        if (el) el.value = txt || '';
     };
 
     setText('data-problem', data.problem);
@@ -181,14 +146,13 @@ function renderResults(res) {
     setText('data-traction', data.traction_metrics);
     setText('data-team', data.team);
 
-    // Risks Tab
     const fillList = (id, items) => {
         const ul = document.getElementById(id);
         if (!ul) return;
-        ul.innerHTML = "";
-        (items || []).forEach(i => {
+        ul.innerHTML = '';
+        (items || []).forEach((item) => {
             const li = document.createElement('li');
-            li.innerText = i;
+            li.innerText = item;
             ul.appendChild(li);
         });
     };
@@ -196,14 +160,12 @@ function renderResults(res) {
     fillList('list-weak-signals', data.weak_signals);
     fillList('list-missing', data.missing_sections);
 
-    // Memo Tab
     const memoDiv = document.getElementById('memo-content');
     if (memoDiv) {
         const formatField = (val) => {
-            if (Array.isArray(val)) return '<ul>' + val.map(v => `<li>${v}</li>`).join('') + '</ul>';
-            return `<p>${val || "Not generated yet."}</p>`;
+            if (Array.isArray(val)) return '<ul>' + val.map((v) => `<li>${v}</li>`).join('') + '</ul>';
+            return `<p>${val || 'Not generated yet.'}</p>`;
         };
-
         memoDiv.innerHTML = `
             <h3>Company Overview</h3>${formatField(memo.company_overview)}
             <h3>Problem & Solution Clarity</h3>${formatField(memo.problem_solution_clarity)}
@@ -222,31 +184,36 @@ function renderResults(res) {
 function setupTabs() {
     const buttons = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
-
-    buttons.forEach(btn => {
+    buttons.forEach((btn) => {
         btn.addEventListener('click', () => {
-            buttons.forEach(b => b.classList.remove('active'));
-            contents.forEach(c => c.style.display = 'none');
-
+            buttons.forEach((b) => b.classList.remove('active'));
+            contents.forEach((c) => {
+                c.style.display = 'none';
+                c.classList.remove('active');
+            });
             btn.classList.add('active');
             const targetId = btn.getAttribute('data-target');
-            document.getElementById(targetId).style.display = 'block';
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.style.display = 'block';
+                target.classList.add('active');
+            }
         });
     });
 }
 
-// NEW: Regenerate Memo from Edited Data
-async function regenerateMemo() {
-    const state = JSON.parse(localStorage.getItem('hatchup_analysis'));
-    if (!state) return alert("No analysis data available.");
+window.regenerateMemo = async function () {
+    const state = getCurrentAnalysisState();
+    if (!state) return alert('No analysis data available.');
 
-    loadingOverlay.style.display = 'block';
-    loadingText.innerText = "Regenerating Investment Memo from edits...";
+    if (loadingOverlay) loadingOverlay.style.display = 'block';
+    if (loadingText) loadingText.innerText = 'Regenerating Investment Memo from edits...';
 
     try {
-        // Gather data from textareas
-        const getValue = (id) => document.getElementById(id).value;
-
+        const getValue = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        };
         const updatedData = {
             ...state.data,
             problem: getValue('data-problem'),
@@ -255,40 +222,35 @@ async function regenerateMemo() {
             market_tam: getValue('data-market'),
             traction_metrics: getValue('data-traction'),
             team: getValue('data-team')
-            // Note: Lists (red_flags) are not currently editable in this UI
         };
 
         const memoRes = await fetch('/api/generate_memo', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
+            },
             body: JSON.stringify(updatedData)
         });
-
         if (!memoRes.ok) throw new Error(await memoRes.text());
         const memoData = await memoRes.json();
 
-        const fullData = {
+        await window.refreshAnalysisWorkspace();
+        renderResults({
             data: updatedData,
             memo: memoData.memo,
             summary: memoData.summary
-        };
-
-        localStorage.setItem('hatchup_analysis', JSON.stringify(fullData));
-        renderResults(fullData);
-        alert("Memo Regenerated!");
-
+        });
+        alert('Memo Regenerated!');
     } catch (err) {
-        alert("Error regenerating: " + err.message);
-        loadingOverlay.style.display = 'none';
-        // Reload page to restore state if needed? No, just keep UI.
+        alert('Error regenerating: ' + err.message);
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
     }
-}
+};
 
-// Downloads
-async function downloadExcel() {
-    const state = JSON.parse(localStorage.getItem('hatchup_analysis'));
-    if (!state) return alert("No data to download");
-
+window.downloadExcel = async function () {
+    const state = getCurrentAnalysisState();
+    if (!state) return alert('No data to download');
     const res = await fetch('/api/export/excel', {
         method: 'POST',
         headers: {
@@ -297,41 +259,39 @@ async function downloadExcel() {
         },
         body: JSON.stringify(state.data)
     });
-    triggerDownload(res, `${state.data.startup_name}_data.xlsx`);
-}
+    triggerDownload(res, `${state.data.startup_name || 'startup'}_data.xlsx`);
+};
 
-async function downloadMemoText() {
-    const state = JSON.parse(localStorage.getItem('hatchup_analysis'));
-    if (!state) return alert("No data");
-
+window.downloadMemoText = async function () {
+    const state = getCurrentAnalysisState();
+    if (!state) return alert('No data');
     const res = await fetch('/api/export/text_memo', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
         },
-        body: JSON.stringify({ memo: state.memo, startup_name: state.data.startup_name })
+        body: JSON.stringify({ memo: state.memo, startup_name: state.data.startup_name || 'startup' })
     });
-    triggerDownload(res, `${state.data.startup_name}_memo.txt`);
-}
+    triggerDownload(res, `${state.data.startup_name || 'startup'}_memo.txt`);
+};
 
-async function downloadMemoPDF() {
-    const state = JSON.parse(localStorage.getItem('hatchup_analysis'));
-    if (!state) return alert("No data");
-
+window.downloadMemoPDF = async function () {
+    const state = getCurrentAnalysisState();
+    if (!state) return alert('No data');
     const res = await fetch('/api/export/pdf_memo', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
         },
-        body: JSON.stringify({ memo: state.memo, startup_name: state.data.startup_name })
+        body: JSON.stringify({ memo: state.memo, startup_name: state.data.startup_name || 'startup' })
     });
-    triggerDownload(res, `${state.data.startup_name}_memo.pdf`);
-}
+    triggerDownload(res, `${state.data.startup_name || 'startup'}_memo.pdf`);
+};
 
 async function triggerDownload(res, filename) {
-    if (!res.ok) return alert("Download failed");
+    if (!res.ok) return alert('Download failed');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
