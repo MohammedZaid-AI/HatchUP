@@ -669,7 +669,7 @@ img.logo-img {
     }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1500px) {
     .app-container {
         flex-direction: column;
     }
