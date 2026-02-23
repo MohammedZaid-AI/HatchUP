@@ -3,3 +3,4 @@ venv/
 __pycache__/
 APP_PLAN.md
 data/
+db/
