@@ -7,8 +7,32 @@ let chatHistory = [];
 let hasAnalysis = false;
 let activeDeck = null;
 let activeMemo = {};
+let analysisLoading = true;
+
+function showResearchLoading() {
+    if (researchEmptyState) researchEmptyState.style.display = 'none';
+    if (researchContent) researchContent.style.display = 'none';
+}
+
+function syncResearchCache() {
+    if (!window.setActiveAnalysisCache) return;
+    const analysisId = window.getActiveAnalysisId ? window.getActiveAnalysisId() : null;
+    if (!analysisId) return;
+    const current = window.getActiveAnalysis ? (window.getActiveAnalysis() || {}) : {};
+    window.setActiveAnalysisCache({
+        analysisId,
+        analysis: {
+            ...current,
+            deck: activeDeck,
+            memo: activeMemo,
+            research: chatHistory
+        },
+        title: activeDeck && activeDeck.startup_name ? activeDeck.startup_name : 'Untitled Analysis'
+    });
+}
 
 function showResearchEmptyState() {
+    if (analysisLoading) return;
     if (researchEmptyState) researchEmptyState.style.display = 'block';
     if (researchContent) researchContent.style.display = 'none';
 }
@@ -19,6 +43,7 @@ function showResearchContent() {
 }
 
 async function persistResearch() {
+    syncResearchCache();
     try {
         await fetch('/api/session/analysis/research', {
             method: 'POST',
@@ -36,7 +61,11 @@ async function persistResearch() {
 
 async function loadActiveAnalysis() {
     try {
-        await window.refreshAnalysisWorkspace();
+        if (window.ensureAnalysisWorkspace) {
+            await window.ensureAnalysisWorkspace();
+        } else {
+            await window.refreshAnalysisWorkspace();
+        }
         const active = window.getActiveAnalysis();
         if (!active || !active.deck) return null;
         return active;
@@ -47,7 +76,9 @@ async function loadActiveAnalysis() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    showResearchLoading();
     const active = await loadActiveAnalysis();
+    analysisLoading = false;
     if (!active) {
         showResearchEmptyState();
         return;
@@ -63,6 +94,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         messagesDiv.innerHTML = '';
         chatHistory = [];
         saved.forEach((msg) => appendMessage(msg.role, msg.content, false, false));
+        syncResearchCache();
     }
 });
 
@@ -129,6 +161,7 @@ function appendMessage(role, content, isTemporary = false, persist = true) {
 
     if (!isTemporary) {
         chatHistory.push({ role, content });
+        syncResearchCache();
         if (persist) {
             persistResearch();
         }

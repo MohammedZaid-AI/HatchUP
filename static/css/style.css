@@ -536,6 +536,12 @@ img.logo-img {
     color: #334155;
 }
 
+.analysis-loading-card {
+    text-align: center;
+    max-width: 640px;
+    margin: 20px auto;
+}
+
 .card.danger {
     border-left: 4px solid var(--danger);
 }

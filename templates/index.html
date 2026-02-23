@@ -13,7 +13,13 @@
     </div>
 </div>
 
-<div class="upload-container" id="upload-container">
+<div id="analyzer-loading-state" class="card analysis-loading-card">
+    <div class="spinner"></div>
+    <h3>Loading Analysis...</h3>
+    <p>Preparing your active startup workspace.</p>
+</div>
+
+<div class="upload-container" id="upload-container" style="display: none;">
     <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
         <i class="fas fa-cloud-upload-alt fa-3x"></i>
         <h3>Upload Pitch Deck</h3>

@@ -22,6 +22,23 @@ function getCachedWorkspace() {
     return hatchupWorkspace;
 }
 
+function hasUsableActiveAnalysis(workspace) {
+    if (!workspace || !workspace.active_analysis_id) return false;
+    return !!workspace.active_analysis;
+}
+
+function upsertAnalysisListItem(workspace, analysisId, title) {
+    if (!workspace) return;
+    if (!Array.isArray(workspace.analyses)) workspace.analyses = [];
+    const index = workspace.analyses.findIndex((item) => item.analysis_id === analysisId);
+    const nextItem = { analysis_id: analysisId, title: title || 'Untitled Analysis' };
+    if (index >= 0) {
+        workspace.analyses[index] = { ...workspace.analyses[index], ...nextItem };
+    } else {
+        workspace.analyses.unshift(nextItem);
+    }
+}
+
 function renderPastAnalyses() {
     const panel = document.getElementById('past-analyses-panel');
     const list = document.getElementById('past-analyses-list');
@@ -73,6 +90,15 @@ window.refreshAnalysisWorkspace = async function () {
     return hatchupWorkspace;
 };
 
+window.ensureAnalysisWorkspace = async function ({ force = false } = {}) {
+    const cached = getCachedWorkspace();
+    if (!force && hasUsableActiveAnalysis(cached)) {
+        renderPastAnalyses();
+        return cached;
+    }
+    return window.refreshAnalysisWorkspace();
+};
+
 window.getAnalysisWorkspace = function () {
     return getCachedWorkspace();
 };
@@ -86,6 +112,21 @@ window.getActiveAnalysis = function () {
     const workspace = getCachedWorkspace();
     if (!workspace) return null;
     return workspace.active_analysis || null;
+};
+
+window.setActiveAnalysisCache = function ({ analysisId, analysis, title } = {}) {
+    if (!analysisId) return;
+    const workspace = getCachedWorkspace() || { analyses: [] };
+    workspace.active_analysis_id = analysisId;
+    if (analysis) {
+        workspace.active_analysis = analysis;
+    } else if (!workspace.active_analysis) {
+        workspace.active_analysis = {};
+    }
+    upsertAnalysisListItem(workspace, analysisId, title);
+    hatchupWorkspace = workspace;
+    persistWorkspace();
+    renderPastAnalyses();
 };
 
 window.startNewAnalysis = async function () {
@@ -108,15 +149,11 @@ window.startNewAnalysis = async function () {
         // Clear any legacy single-session caches so Research/Memo always reset with new analysis.
         localStorage.removeItem(LEGACY_ANALYSIS_KEY);
         localStorage.removeItem(LEGACY_RESEARCH_KEY);
-        hatchupWorkspace = {
-            active_analysis_id: payload.active_analysis_id,
-            active_analysis: payload.analysis,
-            analyses: []
-        };
-        persistWorkspace();
-        renderPastAnalyses();
-
-        await window.refreshAnalysisWorkspace();
+        window.setActiveAnalysisCache({
+            analysisId: payload.active_analysis_id,
+            analysis: payload.analysis,
+            title: 'Untitled Analysis'
+        });
         window.location.href = '/vc/deck-analyzer?fresh=1';
     } catch (error) {
         console.error('New analysis failed', error);
@@ -141,15 +178,23 @@ window.switchActiveAnalysis = async function (analysisId) {
         alert(`Failed to switch analysis: ${text}`);
         return;
     }
-    await window.refreshAnalysisWorkspace();
+    const payload = await res.json();
+    const startupName = payload.analysis && payload.analysis.deck ? payload.analysis.deck.startup_name : '';
+    window.setActiveAnalysisCache({
+        analysisId: payload.active_analysis_id,
+        analysis: payload.analysis,
+        title: startupName || 'Untitled Analysis'
+    });
     window.location.reload();
 };
 
 window.addEventListener('DOMContentLoaded', async () => {
+    const cached = getCachedWorkspace();
+    renderPastAnalyses();
+    if (hasUsableActiveAnalysis(cached)) return;
     try {
         await window.refreshAnalysisWorkspace();
     } catch (error) {
         console.error('Workspace bootstrap failed', error);
-        renderPastAnalyses();
     }
 });

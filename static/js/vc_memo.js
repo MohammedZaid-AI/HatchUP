@@ -1,12 +1,28 @@
 let memoState = null;
+let analysisLoading = true;
+
+function showMemoLoadingState() {
+    const loading = document.getElementById('memo-loading-state');
+    const emptyState = document.getElementById('memo-empty-state');
+    const editor = document.getElementById('memo-editor');
+    if (loading) loading.style.display = 'block';
+    if (emptyState) emptyState.style.display = 'none';
+    if (editor) editor.style.display = 'none';
+}
 
 window.addEventListener('DOMContentLoaded', async () => {
+    showMemoLoadingState();
     try {
-        await window.refreshAnalysisWorkspace();
+        if (window.ensureAnalysisWorkspace) {
+            await window.ensureAnalysisWorkspace();
+        } else {
+            await window.refreshAnalysisWorkspace();
+        }
     } catch (error) {
         console.error('Workspace refresh failed', error);
     }
 
+    analysisLoading = false;
     const active = window.getActiveAnalysis();
     if (!active || !active.deck) {
         showMemoEmptyState();
@@ -24,15 +40,20 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function showMemoEmptyState() {
+    if (analysisLoading) return;
+    const loading = document.getElementById('memo-loading-state');
     const emptyState = document.getElementById('memo-empty-state');
     const editor = document.getElementById('memo-editor');
+    if (loading) loading.style.display = 'none';
     if (emptyState) emptyState.style.display = 'block';
     if (editor) editor.style.display = 'none';
 }
 
 function showMemoEditor() {
+    const loading = document.getElementById('memo-loading-state');
     const emptyState = document.getElementById('memo-empty-state');
     const editor = document.getElementById('memo-editor');
+    if (loading) loading.style.display = 'none';
     if (emptyState) emptyState.style.display = 'none';
     if (editor) editor.style.display = 'block';
 }
@@ -92,7 +113,21 @@ window.regenerateManualMemo = async function () {
             memo: memoData.memo,
             summary: memoData.summary
         };
-        await window.refreshAnalysisWorkspace();
+        if (window.setActiveAnalysisCache) {
+            const current = window.getActiveAnalysis ? (window.getActiveAnalysis() || {}) : {};
+            window.setActiveAnalysisCache({
+                analysisId: memoData.analysis_id || (window.getActiveAnalysisId ? window.getActiveAnalysisId() : null),
+                analysis: {
+                    ...current,
+                    deck: updatedData,
+                    memo: memoData.memo || {},
+                    insights: memoData.summary || {}
+                },
+                title: updatedData.startup_name || 'Untitled Analysis'
+            });
+        } else {
+            await window.refreshAnalysisWorkspace();
+        }
         renderMemo(memoState.memo);
         alert('Memo regenerated successfully.');
     } catch (error) {

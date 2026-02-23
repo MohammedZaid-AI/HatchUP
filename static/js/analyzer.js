@@ -1,8 +1,30 @@
 const fileInput = document.getElementById('file-input');
 const dropZone = document.getElementById('drop-zone');
 const loadingOverlay = document.getElementById('loading-overlay');
+const analyzerLoadingState = document.getElementById('analyzer-loading-state');
+const uploadContainer = document.getElementById('upload-container');
 const resultsContainer = document.getElementById('results-container');
 const loadingText = document.getElementById('loading-text');
+let analysisLoading = true;
+
+function showAnalyzerLoadingState() {
+    if (analyzerLoadingState) analyzerLoadingState.style.display = 'block';
+    if (uploadContainer) uploadContainer.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+}
+
+function showAnalyzerUploadState() {
+    if (analysisLoading) return;
+    if (analyzerLoadingState) analyzerLoadingState.style.display = 'none';
+    if (uploadContainer) uploadContainer.style.display = 'block';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+}
+
+function showAnalyzerResultsState() {
+    if (analyzerLoadingState) analyzerLoadingState.style.display = 'none';
+    if (uploadContainer) uploadContainer.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'block';
+}
 
 if (dropZone) {
     dropZone.addEventListener('dragover', (e) => {
@@ -28,24 +50,33 @@ if (fileInput) {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    showAnalyzerLoadingState();
     try {
-        await window.refreshAnalysisWorkspace();
+        if (window.ensureAnalysisWorkspace) {
+            await window.ensureAnalysisWorkspace();
+        } else {
+            await window.refreshAnalysisWorkspace();
+        }
     } catch (error) {
         console.error('Workspace refresh failed', error);
     }
+    analysisLoading = false;
     const active = window.getActiveAnalysis();
     if (active && active.deck) {
-        if (dropZone) dropZone.style.display = 'none';
+        showAnalyzerResultsState();
         renderResults({
             data: active.deck,
             memo: active.memo || {},
             summary: active.insights || {}
         });
+        return;
     }
+    showAnalyzerUploadState();
 });
 
 async function handleFile(file) {
     if (!file) return;
+    showAnalyzerUploadState();
     if (dropZone) dropZone.style.display = 'none';
     if (loadingOverlay) loadingOverlay.style.display = 'block';
 
@@ -74,8 +105,21 @@ async function handleFile(file) {
         });
         if (!memoRes.ok) throw new Error(await memoRes.text());
         const memoData = await memoRes.json();
-
-        await window.refreshAnalysisWorkspace();
+        if (window.setActiveAnalysisCache && memoData.analysis_id) {
+            window.setActiveAnalysisCache({
+                analysisId: memoData.analysis_id,
+                analysis: {
+                    deck: deckData,
+                    memo: memoData.memo || {},
+                    insights: memoData.summary || {},
+                    research: [],
+                    created_at: (window.getActiveAnalysis && window.getActiveAnalysis() ? window.getActiveAnalysis().created_at : null)
+                },
+                title: deckData.startup_name || 'Untitled Analysis'
+            });
+        } else {
+            await window.refreshAnalysisWorkspace();
+        }
         renderResults({
             data: deckData,
             memo: memoData.memo || {},
@@ -100,7 +144,7 @@ function getCurrentAnalysisState() {
 
 function renderResults(res) {
     if (loadingOverlay) loadingOverlay.style.display = 'none';
-    if (resultsContainer) resultsContainer.style.display = 'block';
+    showAnalyzerResultsState();
 
     const data = res.data || {};
     const summary = res.summary || {};
@@ -234,8 +278,21 @@ window.regenerateMemo = async function () {
         });
         if (!memoRes.ok) throw new Error(await memoRes.text());
         const memoData = await memoRes.json();
-
-        await window.refreshAnalysisWorkspace();
+        if (window.setActiveAnalysisCache) {
+            const current = window.getActiveAnalysis ? (window.getActiveAnalysis() || {}) : {};
+            window.setActiveAnalysisCache({
+                analysisId: memoData.analysis_id || (window.getActiveAnalysisId ? window.getActiveAnalysisId() : null),
+                analysis: {
+                    ...current,
+                    deck: updatedData,
+                    memo: memoData.memo || {},
+                    insights: memoData.summary || {}
+                },
+                title: updatedData.startup_name || 'Untitled Analysis'
+            });
+        } else {
+            await window.refreshAnalysisWorkspace();
+        }
         renderResults({
             data: updatedData,
             memo: memoData.memo,
