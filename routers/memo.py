@@ -1,11 +1,18 @@
 from fastapi import APIRouter, Body, Response, HTTPException, Request
+from functools import lru_cache
 from src.models import PitchDeckData, InvestmentMemo, ExecutiveSummary
 from src.memo_generator import MemoGenerator
 from src.exporter import Exporter
-from src.analysis_store import ensure_session_id, upsert_full
+from src.services.analysis_service import AnalysisService
+from src.session import ensure_session_id, get_active_analysis_id, set_active_analysis_id
 import os
 
 router = APIRouter()
+
+
+@lru_cache(maxsize=1)
+def get_analysis_service() -> AnalysisService:
+    return AnalysisService()
 
 @router.post("/api/generate_memo")
 async def generate_memo_endpoint(request: Request, response: Response, data: PitchDeckData):
@@ -21,7 +28,19 @@ async def generate_memo_endpoint(request: Request, response: Response, data: Pit
         memo = generator.generate_memo(data)
         summary = generator.generate_executive_summary(data, memo)
         session_id = ensure_session_id(request, response)
-        updated = upsert_full(session_id, data.dict(), memo.dict(), summary.dict())
+        service = get_analysis_service()
+        active = service.get_or_create_active_analysis(
+            user_id=session_id,
+            active_analysis_id=get_active_analysis_id(request),
+        )
+        updated = service.update_memo_and_insights(
+            user_id=session_id,
+            analysis_id=active["analysis_id"],
+            deck_data=data.dict(),
+            memo=memo.dict(),
+            insights=summary.dict(),
+        )
+        set_active_analysis_id(response, updated["analysis_id"])
         
         return {
             "analysis_id": updated["analysis_id"],

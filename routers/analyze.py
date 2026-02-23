@@ -1,23 +1,23 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Response
-from pydantic import BaseModel
-from typing import Any, Dict, List
-from src.document_parser import DocumentParser
-from src.analyzer import PitchDeckAnalyzer
-from src.analysis_store import (
-    ensure_session_id,
-    upsert_data,
-    get_active_analysis,
-    list_analyses,
-    create_new_analysis,
-    set_active_analysis,
-    load_workspace,
-    upsert_research,
-)
 import os
 import shutil
 import tempfile
+from functools import lru_cache
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
+from pydantic import BaseModel
+
+from src.analyzer import PitchDeckAnalyzer
+from src.document_parser import DocumentParser
+from src.services.analysis_service import AnalysisService
+from src.session import ensure_session_id, get_active_analysis_id, set_active_analysis_id
 
 router = APIRouter()
+
+
+@lru_cache(maxsize=1)
+def get_analysis_service() -> AnalysisService:
+    return AnalysisService()
 
 
 class ActivateAnalysisPayload(BaseModel):
@@ -66,7 +66,17 @@ async def analyze_deck(request: Request, response: Response, file: UploadFile = 
             analyzer = PitchDeckAnalyzer(api_key=os.environ["GROQ_API_KEY"])
             deck_data = analyzer.analyze_pitch_deck(raw_text)
             session_id = ensure_session_id(request, response)
-            updated = upsert_data(session_id, deck_data.dict())
+            service = get_analysis_service()
+            active_analysis = service.get_or_create_active_analysis(
+                user_id=session_id,
+                active_analysis_id=get_active_analysis_id(request),
+            )
+            updated = service.update_deck_and_reset_outputs(
+                user_id=session_id,
+                analysis_id=active_analysis["analysis_id"],
+                deck_data=deck_data.dict(),
+            )
+            set_active_analysis_id(response, updated["analysis_id"])
             
             return {
                 "analysis_id": updated["analysis_id"],
@@ -85,18 +95,22 @@ async def analyze_deck(request: Request, response: Response, file: UploadFile = 
 @router.get("/api/session/analysis")
 async def get_session_analysis(request: Request, response: Response):
     session_id = ensure_session_id(request, response)
-    active = get_active_analysis(session_id)
-    analysis = active["analysis"]
-    deck = analysis.get("deck")
+    service = get_analysis_service()
+    active = service.get_or_create_active_analysis(
+        user_id=session_id,
+        active_analysis_id=get_active_analysis_id(request),
+    )
+    set_active_analysis_id(response, active["analysis_id"])
+    deck = active.get("deck")
     return {
         "has_analysis": bool(deck),
         "analysis_id": active["analysis_id"],
         "analysis": {
             "data": deck,
-            "memo": analysis.get("memo") or {},
-            "summary": analysis.get("insights") or {},
-            "research": analysis.get("research") or [],
-            "created_at": analysis.get("created_at"),
+            "memo": active.get("memo") or {},
+            "summary": active.get("insights") or {},
+            "research": active.get("research") or [],
+            "created_at": active.get("created_at"),
         },
         "session_id": session_id,
     }
@@ -105,18 +119,23 @@ async def get_session_analysis(request: Request, response: Response):
 @router.get("/api/session/analyses")
 async def get_session_analyses(request: Request, response: Response):
     session_id = ensure_session_id(request, response)
-    workspace = load_workspace(session_id)
-    active = get_active_analysis(session_id)
+    service = get_analysis_service()
+    active = service.get_or_create_active_analysis(
+        user_id=session_id,
+        active_analysis_id=get_active_analysis_id(request),
+    )
+    set_active_analysis_id(response, active["analysis_id"])
+    analyses = service.list_analyses(session_id)
     return {
-        "active_analysis_id": workspace.get("active_analysis_id"),
-        "analyses": list_analyses(session_id),
+        "active_analysis_id": active["analysis_id"],
+        "analyses": analyses,
         "active_analysis": {
             "analysis_id": active["analysis_id"],
-            "deck": active["analysis"].get("deck"),
-            "insights": active["analysis"].get("insights") or {},
-            "memo": active["analysis"].get("memo") or {},
-            "research": active["analysis"].get("research") or [],
-            "created_at": active["analysis"].get("created_at"),
+            "deck": active.get("deck"),
+            "insights": active.get("insights") or {},
+            "memo": active.get("memo") or {},
+            "research": active.get("research") or [],
+            "created_at": active.get("created_at"),
         },
     }
 
@@ -124,31 +143,56 @@ async def get_session_analyses(request: Request, response: Response):
 @router.post("/api/session/analysis/new")
 async def start_new_analysis(request: Request, response: Response):
     session_id = ensure_session_id(request, response)
-    created = create_new_analysis(session_id)
+    service = get_analysis_service()
+    created = service.create_analysis(user_id=session_id)
+    set_active_analysis_id(response, created["analysis_id"])
     return {
         "active_analysis_id": created["analysis_id"],
-        "analysis": created["analysis"],
+        "analysis": {
+            "deck": created.get("deck"),
+            "insights": created.get("insights") or {},
+            "memo": created.get("memo") or {},
+            "research": created.get("research") or [],
+            "created_at": created.get("created_at"),
+        },
     }
 
 
 @router.post("/api/session/analysis/activate")
 async def activate_analysis(payload: ActivateAnalysisPayload, request: Request, response: Response):
     session_id = ensure_session_id(request, response)
-    try:
-        analysis = set_active_analysis(session_id, payload.analysis_id)
-    except KeyError:
+    service = get_analysis_service()
+    analysis = service.get_analysis(session_id, payload.analysis_id)
+    if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
+    set_active_analysis_id(response, payload.analysis_id)
     return {
         "active_analysis_id": payload.analysis_id,
-        "analysis": analysis,
+        "analysis": {
+            "deck": analysis.get("deck"),
+            "insights": analysis.get("insights") or {},
+            "memo": analysis.get("memo") or {},
+            "research": analysis.get("research") or [],
+            "created_at": analysis.get("created_at"),
+        },
     }
 
 
 @router.post("/api/session/analysis/research")
 async def save_research_state(payload: ResearchStatePayload, request: Request, response: Response):
     session_id = ensure_session_id(request, response)
-    updated = upsert_research(session_id, payload.messages)
+    service = get_analysis_service()
+    active = service.get_or_create_active_analysis(
+        user_id=session_id,
+        active_analysis_id=get_active_analysis_id(request),
+    )
+    updated = service.update_deep_research(
+        user_id=session_id,
+        analysis_id=active["analysis_id"],
+        deep_research=payload.messages,
+    )
+    set_active_analysis_id(response, updated["analysis_id"])
     return {
         "analysis_id": updated["analysis_id"],
-        "research_count": len(updated["analysis"].get("research") or []),
+        "research_count": len(updated.get("research") or []),
     }

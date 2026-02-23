@@ -1,12 +1,14 @@
 from fastapi import APIRouter, HTTPException, Body, Request, Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from functools import lru_cache
 import os
 from pathlib import Path
 import json
 import asyncio
 from dotenv import load_dotenv
-from src.analysis_store import ensure_session_id, get_active_analysis
+from src.services.analysis_service import AnalysisService
+from src.session import ensure_session_id, get_active_analysis_id, set_active_analysis_id
 
 # LangChain Imports
 from langchain_groq import ChatGroq
@@ -19,6 +21,11 @@ import sys
 load_dotenv()
 
 router = APIRouter()
+
+
+@lru_cache(maxsize=1)
+def get_analysis_service() -> AnalysisService:
+    return AnalysisService()
 
 # --- Models ---
 class Message(BaseModel):
@@ -48,13 +55,18 @@ async def deep_research(payload: ResearchRequest, request: Request, response: Re
 
         data_obj = payload.data
         memo_obj = payload.memo
-        analysis_id = None
+        analysis_id = get_active_analysis_id(request)
         if not data_obj:
             session_id = ensure_session_id(request, response)
-            active = get_active_analysis(session_id)
+            service = get_analysis_service()
+            active = service.get_or_create_active_analysis(
+                user_id=session_id,
+                active_analysis_id=get_active_analysis_id(request),
+            )
             analysis_id = active["analysis_id"]
-            data_obj = active["analysis"].get("deck")
-            memo_obj = active["analysis"].get("memo") or {}
+            data_obj = active.get("deck")
+            memo_obj = active.get("memo") or {}
+            set_active_analysis_id(response, analysis_id)
         if not data_obj:
             raise HTTPException(status_code=400, detail="No active deck analysis found")
 

@@ -12,5 +12,12 @@ window.getHatchupSessionId = function () {
 };
 
 window.getHatchupSessionHeaders = function () {
-    return { 'X-Hatchup-Session': window.getHatchupSessionId() };
+    const headers = { 'X-Hatchup-Session': window.getHatchupSessionId() };
+    if (window.getActiveAnalysisId) {
+        const activeAnalysisId = window.getActiveAnalysisId();
+        if (activeAnalysisId) {
+            headers['X-Hatchup-Analysis-Id'] = activeAnalysisId;
+        }
+    }
+    return headers;
 };
