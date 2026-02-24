@@ -82,9 +82,11 @@
         </aside>
 
         <main class="main-content">
-            <section id="vc-mode-view" class="mode-view mode-view-vc">
+            {% set is_chat_route = request.url.path == '/chat' or request.url.path == '/hatchup_chat' %}
+            <section id="{{ 'core-feature-view' if is_chat_route else 'vc-mode-view' }}" class="mode-view {{ 'mode-view-core' if is_chat_route else 'mode-view-vc' }}">
                 {% block content %}{% endblock %}
             </section>
+            {% if not is_chat_route %}
             <section id="founder-mode-view" class="mode-view mode-view-founder" hidden>
                 <div class="content-header">
                     <h1>HatchUp Founders</h1>
@@ -109,6 +111,7 @@
                     </div>
                 </div>
             </section>
+            {% endif %}
         </main>
     </div>
 
