@@ -19,6 +19,41 @@ body {
     height: 100vh;
 }
 
+body.mode-loading .app-container {
+    display: none;
+}
+
+body.mode-loading {
+    display: block;
+}
+
+.mode-loader {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 100vh;
+}
+
+body.mode-loading .mode-loader {
+    display: flex;
+}
+
+.mode-loader-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #dbe3ef;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: mode-spin 0.8s linear infinite;
+}
+
+@keyframes mode-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .home-body {
     display: block;
     min-height:100vh;

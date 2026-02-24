@@ -42,9 +42,14 @@ function upsertAnalysisListItem(workspace, analysisId, title) {
 function renderPastAnalyses() {
     const panel = document.getElementById('past-analyses-panel');
     const list = document.getElementById('past-analyses-list');
-    const modeToggle = document.getElementById('mode-toggle');
-    const mode = modeToggle ? (modeToggle.dataset.activeMode || 'vc') : (localStorage.getItem('hatchup_mode') || 'vc');
+    const modeState = window.HatchupAppState || null;
+    const modeLoading = modeState && modeState.isModeLoading ? modeState.isModeLoading() : false;
+    const mode = modeState && modeState.getMode ? modeState.getMode() : 'vc';
     if (!panel || !list) return;
+    if (modeLoading) {
+        panel.style.display = 'none';
+        return;
+    }
     if (mode !== 'vc') {
         panel.style.display = 'none';
         return;
@@ -191,6 +196,9 @@ window.switchActiveAnalysis = async function (analysisId) {
 window.addEventListener('DOMContentLoaded', async () => {
     const cached = getCachedWorkspace();
     renderPastAnalyses();
+    if (window.HatchupAppState && window.HatchupAppState.subscribeMode) {
+        window.HatchupAppState.subscribeMode(() => renderPastAnalyses());
+    }
     if (hasUsableActiveAnalysis(cached)) return;
     try {
         await window.refreshAnalysisWorkspace();

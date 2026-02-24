@@ -13,7 +13,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 
-<body>
+<body class="mode-loading">
+    <div id="mode-loader" class="mode-loader" role="status" aria-live="polite">
+        <div class="mode-loader-spinner" aria-hidden="true"></div>
+    </div>
     <div class="app-container">
         <aside class="sidebar">
             <div class="sidebar-top">
@@ -84,6 +87,7 @@
     </div>
 
     <script src="/static/js/session.js"></script>
+    <script src="/static/js/mode_state.js"></script>
     <script src="/static/js/analysis_manager.js"></script>
     <script src="/static/js/main.js"></script>
     {% block scripts %}{% endblock %}
