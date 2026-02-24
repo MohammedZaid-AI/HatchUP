@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Marked.js for Markdown Rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260224c">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -17,7 +17,7 @@
     <div id="mode-loader" class="mode-loader" role="status" aria-live="polite">
         <div class="mode-loader-spinner" aria-hidden="true"></div>
     </div>
-    <div class="app-container">
+    <div class="app-container" id="app-container" hidden>
         <aside class="sidebar">
             <div class="sidebar-top">
                 <div class="sidebar-group primary-group">
@@ -62,7 +62,7 @@
                     </nav>
 
                     <nav class="sidebar-nav" id="founder-nav">
-                        <a href="/founder" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
+                        <a href="#" id="founder-mode-link" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
                             <i class="fas fa-rocket"></i> HatchUp Founders
                         </a>
                     </nav>
@@ -82,14 +82,40 @@
         </aside>
 
         <main class="main-content">
-            {% block content %}{% endblock %}
+            <section id="vc-mode-view" class="mode-view mode-view-vc">
+                {% block content %}{% endblock %}
+            </section>
+            <section id="founder-mode-view" class="mode-view mode-view-founder" hidden>
+                <div class="content-header">
+                    <h1>HatchUp Founders</h1>
+                    <p>Founder Mode is visible for roadmap signaling. All tools are currently marked as coming soon.</p>
+                </div>
+
+                <div class="grid-3 founder-grid">
+                    <div class="card coming-soon-card">
+                        <h3>Founder Copilot</h3>
+                        <p>Context-aware startup guidance and planning assistant.</p>
+                        <span class="coming-soon-badge">Coming Soon</span>
+                    </div>
+                    <div class="card coming-soon-card">
+                        <h3>Fundraising Builder</h3>
+                        <p>Guided workflows for building raise strategy and investor pipeline.</p>
+                        <span class="coming-soon-badge">Coming Soon</span>
+                    </div>
+                    <div class="card coming-soon-card">
+                        <h3>Deck Feedback Studio</h3>
+                        <p>Structured review loops to improve storytelling and pitch quality.</p>
+                        <span class="coming-soon-badge">Coming Soon</span>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
-    <script src="/static/js/session.js"></script>
-    <script src="/static/js/mode_state.js"></script>
-    <script src="/static/js/analysis_manager.js"></script>
-    <script src="/static/js/main.js"></script>
+    <script src="/static/js/session.js?v=20260224c"></script>
+    <script src="/static/js/mode_state.js?v=20260224c"></script>
+    <script src="/static/js/analysis_manager.js?v=20260224c"></script>
+    <script src="/static/js/main.js?v=20260224c"></script>
     {% block scripts %}{% endblock %}
 </body>
 

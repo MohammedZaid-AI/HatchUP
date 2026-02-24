@@ -10,7 +10,7 @@ function setMode(mode) {
 }
 
 window.enterWorkspace = function (mode) {
-    const selectedMode = setMode(mode);
-    const destination = selectedMode === 'founder' ? '/founder' : '/vc';
+    setMode(mode);
+    const destination = '/vc/deck-analyzer';
     window.location.href = destination;
 };

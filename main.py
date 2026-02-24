@@ -69,10 +69,7 @@ async def read_vc_memo(request: Request):
 
 @app.get("/founder")
 async def read_founder(request: Request):
-    return templates.TemplateResponse(
-        "founder.html",
-        {"request": request, "mode": "founder"}
-    )
+    return RedirectResponse(url="/vc/deck-analyzer", status_code=307)
 
 @app.get("/chat")
 async def read_hatchup_chat(request: Request):

@@ -1,36 +1,34 @@
-function getDefaultRouteForMode(mode) {
-    return mode === 'founder' ? '/founder' : '/vc/deck-analyzer';
-}
-
-function getRouteMode(pathname) {
-    if (pathname === '/founder') {
-        return 'founder';
-    }
-    if (pathname.startsWith('/vc/') || pathname === '/vc' || pathname === '/chat' || pathname === '/hatchup_chat') {
-        return 'vc';
-    }
-    return null;
-}
-
-function shouldRedirectOnModeChange(pathname) {
-    return getRouteMode(pathname) !== null;
-}
-
 function getModeState() {
     return window.HatchupAppState || null;
 }
 
 function syncModeLoadingUi(isLoading) {
+    const appContainer = document.getElementById('app-container');
+    const modeLoader = document.getElementById('mode-loader');
     if (isLoading) {
         document.body.classList.add('mode-loading');
+        if (appContainer) {
+            appContainer.hidden = true;
+        }
+        if (modeLoader) {
+            modeLoader.hidden = false;
+        }
     } else {
         document.body.classList.remove('mode-loading');
+        if (appContainer) {
+            appContainer.hidden = false;
+        }
+        if (modeLoader) {
+            modeLoader.hidden = true;
+        }
     }
 }
 
 function applyModeUi(mode) {
     const vcNav = document.getElementById('vc-nav');
     const founderNav = document.getElementById('founder-nav');
+    const vcModeView = document.getElementById('vc-mode-view');
+    const founderModeView = document.getElementById('founder-mode-view');
     const switchInput = document.getElementById('mode-switch-input');
     const modeToggle = document.getElementById('mode-toggle');
     const toolsLabel = document.getElementById('tools-section-label');
@@ -41,6 +39,12 @@ function applyModeUi(mode) {
     }
     if (founderNav) {
         founderNav.style.display = mode === 'founder' ? 'block' : 'none';
+    }
+    if (vcModeView) {
+        vcModeView.hidden = mode !== 'vc';
+    }
+    if (founderModeView) {
+        founderModeView.hidden = mode !== 'founder';
     }
     if (switchInput) {
         switchInput.checked = mode === 'founder';
@@ -66,24 +70,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const modeState = getModeState();
     const serverMode = modeToggle.dataset.activeMode === 'founder' ? 'founder' : 'vc';
     const storedMode = modeState && modeState.getStoredMode ? modeState.getStoredMode() : null;
-    const currentPath = window.location.pathname;
-    const routeMode = getRouteMode(currentPath);
     const resolvedMode = storedMode || serverMode;
+    const founderModeLink = document.getElementById('founder-mode-link');
 
     if (modeState && modeState.startModeLoading) {
         modeState.startModeLoading();
-    }
-
-    // Keep UI hidden while redirecting off a mismatched route.
-    if (routeMode && resolvedMode !== routeMode) {
-        const destination = getDefaultRouteForMode(resolvedMode);
-        if (currentPath !== destination) {
-            if (modeState && modeState.persistMode) {
-                modeState.persistMode(resolvedMode);
-            }
-            window.location.replace(destination);
-            return;
-        }
     }
 
     let currentMode;
@@ -104,6 +95,20 @@ window.addEventListener('DOMContentLoaded', () => {
     applyModeUi(currentMode);
 
     const switchInput = document.getElementById('mode-switch-input');
+    if (founderModeLink) {
+        founderModeLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (currentMode === 'founder') {
+                return;
+            }
+            currentMode = 'founder';
+            if (modeState && modeState.setMode) {
+                modeState.setMode('founder');
+            } else {
+                applyModeUi('founder');
+            }
+        });
+    }
     if (!switchInput) return;
 
     switchInput.addEventListener('change', () => {
@@ -117,13 +122,6 @@ window.addEventListener('DOMContentLoaded', () => {
             modeState.setMode(selectedMode);
         } else {
             applyModeUi(selectedMode);
-        }
-
-        if (shouldRedirectOnModeChange(window.location.pathname)) {
-            const destination = getDefaultRouteForMode(selectedMode);
-            if (window.location.pathname !== destination) {
-                window.location.href = destination;
-            }
         }
     });
 });
