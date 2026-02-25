@@ -85,3 +85,17 @@ async def legacy_research():
 @app.get("/hatchup_chat")
 async def legacy_hatchup_chat():
     return RedirectResponse(url="/chat", status_code=307)
+
+@app.get("/terms")
+async def read_terms(request: Request):
+    return templates.TemplateResponse(
+        "terms.html",
+        {"request": request}
+    )
+
+@app.get("/privacy")
+async def read_privacy(request: Request):
+    return templates.TemplateResponse(
+        "privacy.html",
+        {"request": request}
+    )
