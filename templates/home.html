@@ -13,7 +13,7 @@
             anonKey: "{{ supabase_anon_key | default('', true) | e }}"
         };
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260225a">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260227e">
 </head>
 
 <body class="home-body">
@@ -128,11 +128,19 @@
 
     <div id="auth-modal" class="auth-modal" hidden>
         <div class="auth-modal-card">
-            <button class="auth-close" data-auth-close="true" onclick="window.setAuthModalOpen && window.setAuthModalOpen(false)" type="button" aria-label="Close dialog">X</button>
+            <button class="auth-close" data-auth-close="true" onclick="window.closeAuthModal && window.closeAuthModal()" type="button" aria-label="Close dialog">X</button>
             <h2 id="auth-modal-title">Log in to HatchUp</h2>
+            <div class="auth-mode-toggle" role="tablist" aria-label="Authentication mode">
+                <button id="auth-mode-login" class="auth-mode-btn active" data-auth-switch="login" type="button">Login</button>
+                <button id="auth-mode-signup" class="auth-mode-btn" data-auth-switch="signup" type="button">Sign Up</button>
+            </div>
             <button id="auth-google-btn" class="home-auth-btn auth-google-btn" onclick="window.loginWithGoogle && window.loginWithGoogle()" type="button">Continue with Google</button>
             <div class="auth-divider"><span>or</span></div>
             <form id="auth-form" onsubmit="if (window.submitEmailAuth) { window.submitEmailAuth(event); } return false;">
+                <div id="auth-name-row" style="display: none;">
+                    <label for="auth-name">Name</label>
+                    <input id="auth-name" type="text" autocomplete="name" />
+                </div>
                 <label for="auth-email">Email</label>
                 <input id="auth-email" type="email" required autocomplete="email" />
                 <label for="auth-password">Password</label>
@@ -143,9 +151,9 @@
         </div>
     </div>
 
-    <script src="/static/js/session.js?v=20260227c"></script>
+    <script src="/static/js/session.js?v=20260227j"></script>
     <script src="/static/js/mode_state.js?v=20260224c"></script>
-    <script src="/static/js/home.js?v=20260227c"></script>
+    <script src="/static/js/home.js?v=20260227e"></script>
 </body>
 
 </html>

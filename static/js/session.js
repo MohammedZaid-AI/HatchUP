@@ -135,6 +135,45 @@
         setAuthModalOpen(false);
     }
 
+    function applyAuthMode(mode) {
+        const modal = document.getElementById("auth-modal");
+        if (!modal) return;
+        const resolvedMode = mode === "signup" ? "signup" : "login";
+        modal.dataset.mode = resolvedMode;
+
+        const title = document.getElementById("auth-modal-title");
+        const action = document.getElementById("auth-submit-btn");
+        const passwordInput = document.getElementById("auth-password");
+        const nameRow = document.getElementById("auth-name-row");
+        const nameInput = document.getElementById("auth-name");
+        const loginToggle = document.getElementById("auth-mode-login");
+        const signupToggle = document.getElementById("auth-mode-signup");
+
+        if (title) {
+            title.textContent = resolvedMode === "signup" ? "Create your account" : "Log in to HatchUp";
+        }
+        if (action) {
+            action.textContent = resolvedMode === "signup" ? "Sign Up" : "Login";
+        }
+        if (passwordInput) {
+            passwordInput.setAttribute("autocomplete", resolvedMode === "signup" ? "new-password" : "current-password");
+        }
+        if (nameRow) {
+            nameRow.style.display = resolvedMode === "signup" ? "" : "none";
+        }
+        if (nameInput) {
+            nameInput.required = resolvedMode === "signup";
+        }
+        if (loginToggle) {
+            loginToggle.classList.toggle("active", resolvedMode === "login");
+            loginToggle.setAttribute("aria-selected", resolvedMode === "login" ? "true" : "false");
+        }
+        if (signupToggle) {
+            signupToggle.classList.toggle("active", resolvedMode === "signup");
+            signupToggle.setAttribute("aria-selected", resolvedMode === "signup" ? "true" : "false");
+        }
+    }
+
     async function waitForActiveSession(timeoutMs = 8000) {
         if (!supabaseClient) return null;
         const start = Date.now();
@@ -206,19 +245,23 @@
         if (lastHandledAccessToken === session.access_token) return;
 
         handlingAuthSuccess = true;
+        let syncError = null;
         try {
             await syncUserWithBackend(session);
+        } catch (error) {
+            syncError = error;
+            console.error("Auth user sync failed", error);
+        } finally {
             lastHandledAccessToken = session.access_token;
             closeAuthModal();
             navigateToAuthIntent();
-        } catch (error) {
-            const errorNode = document.getElementById("auth-error");
-            if (errorNode && !document.getElementById("auth-modal")?.hidden) {
-                errorNode.textContent = error.message || "Failed to finalize authentication";
-            } else {
-                console.error("Auth user sync failed", error);
+            if (syncError) {
+                window.dispatchEvent(new CustomEvent("hatchup:authsyncwarning", {
+                    detail: {
+                        message: syncError.message || "Failed to sync user profile",
+                    },
+                }));
             }
-        } finally {
             handlingAuthSuccess = false;
         }
     }
@@ -227,6 +270,7 @@
         const previousToken = currentSession && currentSession.access_token ? currentSession.access_token : null;
         currentSession = session || null;
         currentUser = extractUser(currentSession);
+        setAuthLoading(false);
         const token = currentSession && currentSession.access_token;
         if (token) {
             setAuthCookie(token);
@@ -295,15 +339,7 @@
         const modal = document.getElementById("auth-modal");
         if (!modal) return;
         setAuthModalOpen(true);
-        modal.dataset.mode = mode === "signup" ? "signup" : "login";
-        const title = document.getElementById("auth-modal-title");
-        const action = document.getElementById("auth-submit-btn");
-        if (title) {
-            title.textContent = modal.dataset.mode === "signup" ? "Create your account" : "Log in to HatchUp";
-        }
-        if (action) {
-            action.textContent = modal.dataset.mode === "signup" ? "Sign Up" : "Login";
-        }
+        applyAuthMode(mode);
     }
 
     async function loginWithEmail(email, password) {
@@ -312,32 +348,71 @@
         return data ? data.session : null;
     }
 
-    async function signUpWithEmail(email, password) {
-        const { data, error } = await supabaseClient.auth.signUp({ email, password });
-        if (error) throw error;
-        if (data && data.session) return data.session;
-        return loginWithEmail(email, password);
+    async function signUpWithEmail(email, password, name) {
+        const metadata = {};
+        const trimmedName = (name || "").trim();
+        if (trimmedName) {
+            metadata.full_name = trimmedName;
+            metadata.name = trimmedName;
+        }
+
+        const { data, error } = await supabaseClient.auth.signUp({
+            email,
+            password,
+            options: {
+                data: metadata,
+            },
+        });
+        if (error) {
+            const msg = String(error.message || "").toLowerCase();
+            if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
+                throw new Error("This email is already signed up. Please log in.");
+            }
+            throw error;
+        }
+        return data || null;
     }
 
     async function submitEmailAuth(event) {
-        event.preventDefault();
-        if (!supabaseClient) return;
+        if (event && typeof event.preventDefault === "function") {
+            event.preventDefault();
+        }
+        if (!supabaseClient) {
+            const errorNode = document.getElementById("auth-error");
+            if (errorNode) errorNode.textContent = "Authentication is not ready. Please refresh and try again.";
+            return false;
+        }
         const modal = document.getElementById("auth-modal");
+        const nameInput = document.getElementById("auth-name");
         const emailInput = document.getElementById("auth-email");
         const passwordInput = document.getElementById("auth-password");
         const errorNode = document.getElementById("auth-error");
 
-        if (!emailInput || !passwordInput) return;
+        if (!emailInput || !passwordInput) return false;
         if (errorNode) errorNode.textContent = "";
         setAuthLoading(true);
 
         const email = emailInput.value.trim();
         const password = passwordInput.value;
+        const name = nameInput ? nameInput.value.trim() : "";
 
         try {
             let session = null;
             if ((modal && modal.dataset.mode) === "signup") {
-                session = await signUpWithEmail(email, password);
+                const signUpData = await signUpWithEmail(email, password, name);
+                if (signUpData && signUpData.user && signUpData.session) {
+                    await supabaseClient.auth.signOut();
+                    setSession(null);
+                    applyAuthMode("login");
+                    if (errorNode) errorNode.textContent = "Sign up successful. Please log in.";
+                    return false;
+                }
+                if (signUpData && signUpData.user) {
+                    applyAuthMode("login");
+                    if (errorNode) errorNode.textContent = "Sign up successful. Please confirm email, then log in.";
+                    return false;
+                }
+                throw new Error("Sign up failed. Please try again.");
             } else {
                 session = await loginWithEmail(email, password);
             }
@@ -350,11 +425,25 @@
             await handlePostAuthSuccess(activeSession);
         } catch (authError) {
             if (errorNode) {
-                errorNode.textContent = authError && authError.message ? authError.message : "Authentication failed";
+                const rawMessage = authError && authError.message ? authError.message : "Authentication failed";
+                const normalized = String(rawMessage).toLowerCase();
+                if (normalized.includes("invalid login credentials") || normalized.includes("user not found")) {
+                    const isLoginMode = (modal && modal.dataset.mode) !== "signup";
+                    errorNode.textContent = isLoginMode
+                        ? "Please sign up first. No account found for this email."
+                        : "User does not exist or password is incorrect.";
+                } else if (normalized.includes("email not confirmed")) {
+                    errorNode.textContent = "Email not confirmed. Check your inbox and verify your email first.";
+                } else if (normalized.includes("rate limit") || normalized.includes("email rate limit")) {
+                    errorNode.textContent = "Too many email attempts. Please wait a few minutes and try again.";
+                } else {
+                    errorNode.textContent = rawMessage;
+                }
             }
         } finally {
             setAuthLoading(false);
         }
+        return false;
     }
 
     async function loginWithGoogle() {
@@ -399,6 +488,11 @@
         });
         document.querySelectorAll('[data-auth-open="signup"]').forEach((btn) => {
             btn.addEventListener("click", () => openAuthModal("signup"));
+        });
+        document.querySelectorAll('[data-auth-switch]').forEach((btn) => {
+            btn.addEventListener("click", () => {
+                applyAuthMode(btn.getAttribute("data-auth-switch"));
+            });
         });
         document.querySelectorAll('[data-auth-close="true"]').forEach((btn) => {
             btn.addEventListener("click", closeAuthModal);
@@ -448,11 +542,12 @@
     window.clearAuthIntentMode = clearAuthIntentMode;
     window.navigateToAuthIntent = navigateToAuthIntent;
     window.setAuthModalOpen = setAuthModalOpen;
+    window.closeAuthModal = closeAuthModal;
     window.openAuthModal = openAuthModal;
     window.submitEmailAuth = submitEmailAuth;
     window.loginWithGoogle = loginWithGoogle;
     window.logoutHatchup = logout;
-    window.__HATCHUP_SESSION_VERSION = "20260227c";
+    window.__HATCHUP_SESSION_VERSION = "20260227j";
 
     ensureFetchAuthWrapper();
     void bootstrapSupabase();
