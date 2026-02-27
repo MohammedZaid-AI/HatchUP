@@ -88,6 +88,10 @@ window.refreshAnalysisWorkspace = async function () {
         credentials: 'same-origin',
         cache: 'no-store'
     });
+    if (res.status === 401) {
+        window.location.href = '/';
+        throw new Error('Authentication required');
+    }
     if (!res.ok) throw new Error('Failed to load analyses');
     hatchupWorkspace = await res.json();
     persistWorkspace();

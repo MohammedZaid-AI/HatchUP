@@ -7,8 +7,9 @@ from pathlib import Path
 import json
 import asyncio
 from dotenv import load_dotenv
+from src.auth import require_user_id
 from src.services.analysis_service import AnalysisService
-from src.session import ensure_session_id, get_active_analysis_id, set_active_analysis_id
+from src.session import get_active_analysis_id, set_active_analysis_id
 
 # LangChain Imports
 from langchain_groq import ChatGroq
@@ -26,6 +27,10 @@ router = APIRouter()
 @lru_cache(maxsize=1)
 def get_analysis_service() -> AnalysisService:
     return AnalysisService()
+
+
+def get_authenticated_user_id(request: Request) -> str:
+    return require_user_id(request)
 
 # --- Models ---
 class Message(BaseModel):
@@ -56,11 +61,11 @@ async def deep_research(payload: ResearchRequest, request: Request, response: Re
         data_obj = payload.data
         memo_obj = payload.memo
         analysis_id = get_active_analysis_id(request)
+        user_id = get_authenticated_user_id(request)
         if not data_obj:
-            session_id = ensure_session_id(request, response)
             service = get_analysis_service()
             active = service.get_or_create_active_analysis(
-                user_id=session_id,
+                user_id=user_id,
                 active_analysis_id=get_active_analysis_id(request),
             )
             analysis_id = active["analysis_id"]
@@ -249,11 +254,12 @@ def build_context_string(results: dict) -> str:
     """
 
 @router.post("/api/chat/hatchup")
-async def hatchup_chat(request: ChatRequest):
+async def hatchup_chat(payload: ChatRequest, request: Request):
     """
     MCP-based Chat.
     """
     try:
+        get_authenticated_user_id(request)
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not found")
@@ -261,11 +267,11 @@ async def hatchup_chat(request: ChatRequest):
         sessions = await get_mcp_sessions()
         
         # Run Searches
-        search_results = await run_searches(request.query, sessions)
+        search_results = await run_searches(payload.query, sessions)
         context_str = build_context_string(search_results)
         
         # Prepare Prompt
-        history_text = "\n".join([f"{m.role.upper()}: {m.content}" for m in request.messages[-5:]])
+        history_text = "\n".join([f"{m.role.upper()}: {m.content}" for m in payload.messages[-5:]])
         
         llm = ChatGroq(
             model="openai/gpt-oss-20b",
@@ -312,7 +318,7 @@ async def hatchup_chat(request: ChatRequest):
         messages = chat_prompt.format_messages(
             context=context_str,
             history=history_text,
-            question=request.query
+            question=payload.query
         )
         
         response = await llm.ainvoke(messages)

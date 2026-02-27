@@ -9,8 +9,21 @@ function setMode(mode) {
     return value;
 }
 
-window.enterWorkspace = function (mode) {
-    setMode(mode);
-    const destination = '/vc/deck-analyzer';
+window.enterWorkspace = async function (mode) {
+    const normalizedMode = mode === 'founder' ? 'founder' : 'vc';
+    setMode(normalizedMode);
+    if (window.setAuthIntentMode) {
+        window.setAuthIntentMode(normalizedMode);
+    }
+    if (window.waitForAuthReady) {
+        await window.waitForAuthReady();
+    }
+    if (window.isAuthenticated && !window.isAuthenticated()) {
+        const eventName = normalizedMode === 'founder' ? 'signup' : 'login';
+        const authBtn = document.querySelector(`[data-auth-open="${eventName}"]`) || document.querySelector('[data-auth-open="login"]');
+        if (authBtn) authBtn.click();
+        return;
+    }
+    const destination = normalizedMode === 'founder' ? '/founder' : '/vc/deck-analyzer';
     window.location.href = destination;
 };

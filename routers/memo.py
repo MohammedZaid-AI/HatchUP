@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Body, Response, HTTPException, Request
 from functools import lru_cache
 from src.models import PitchDeckData, InvestmentMemo, ExecutiveSummary
+from src.auth import require_user_id
 from src.memo_generator import MemoGenerator
 from src.exporter import Exporter
 from src.services.analysis_service import AnalysisService
-from src.session import ensure_session_id, get_active_analysis_id, set_active_analysis_id
+from src.session import get_active_analysis_id, set_active_analysis_id
 import os
 
 router = APIRouter()
@@ -13,6 +14,10 @@ router = APIRouter()
 @lru_cache(maxsize=1)
 def get_analysis_service() -> AnalysisService:
     return AnalysisService()
+
+
+def get_authenticated_user_id(request: Request) -> str:
+    return require_user_id(request)
 
 @router.post("/api/generate_memo")
 async def generate_memo_endpoint(request: Request, response: Response, data: PitchDeckData):
@@ -27,14 +32,14 @@ async def generate_memo_endpoint(request: Request, response: Response, data: Pit
         generator = MemoGenerator(api_key=api_key)
         memo = generator.generate_memo(data)
         summary = generator.generate_executive_summary(data, memo)
-        session_id = ensure_session_id(request, response)
+        user_id = get_authenticated_user_id(request)
         service = get_analysis_service()
         active = service.get_or_create_active_analysis(
-            user_id=session_id,
+            user_id=user_id,
             active_analysis_id=get_active_analysis_id(request),
         )
         updated = service.update_memo_and_insights(
-            user_id=session_id,
+            user_id=user_id,
             analysis_id=active["analysis_id"],
             deck_data=data.dict(),
             memo=memo.dict(),

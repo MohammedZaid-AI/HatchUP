@@ -8,9 +8,10 @@ from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFil
 from pydantic import BaseModel
 
 from src.analyzer import PitchDeckAnalyzer
+from src.auth import require_user_id
 from src.document_parser import DocumentParser
 from src.services.analysis_service import AnalysisService
-from src.session import ensure_session_id, get_active_analysis_id, set_active_analysis_id
+from src.session import get_active_analysis_id, set_active_analysis_id
 
 router = APIRouter()
 
@@ -26,6 +27,10 @@ class ActivateAnalysisPayload(BaseModel):
 
 class ResearchStatePayload(BaseModel):
     messages: List[Dict[str, Any]]
+
+
+def get_authenticated_user_id(request: Request) -> str:
+    return require_user_id(request)
 
 @router.post("/api/analyze")
 async def analyze_deck(request: Request, response: Response, file: UploadFile = File(...)):
@@ -65,14 +70,14 @@ async def analyze_deck(request: Request, response: Response, file: UploadFile = 
             # Extract Data
             analyzer = PitchDeckAnalyzer(api_key=os.environ["GROQ_API_KEY"])
             deck_data = analyzer.analyze_pitch_deck(raw_text)
-            session_id = ensure_session_id(request, response)
+            user_id = get_authenticated_user_id(request)
             service = get_analysis_service()
             active_analysis = service.get_or_create_active_analysis(
-                user_id=session_id,
+                user_id=user_id,
                 active_analysis_id=get_active_analysis_id(request),
             )
             updated = service.update_deck_and_reset_outputs(
-                user_id=session_id,
+                user_id=user_id,
                 analysis_id=active_analysis["analysis_id"],
                 deck_data=deck_data.dict(),
             )
@@ -94,10 +99,10 @@ async def analyze_deck(request: Request, response: Response, file: UploadFile = 
 
 @router.get("/api/session/analysis")
 async def get_session_analysis(request: Request, response: Response):
-    session_id = ensure_session_id(request, response)
+    user_id = get_authenticated_user_id(request)
     service = get_analysis_service()
     active = service.get_or_create_active_analysis(
-        user_id=session_id,
+        user_id=user_id,
         active_analysis_id=get_active_analysis_id(request),
     )
     set_active_analysis_id(response, active["analysis_id"])
@@ -112,20 +117,20 @@ async def get_session_analysis(request: Request, response: Response):
             "research": active.get("research") or [],
             "created_at": active.get("created_at"),
         },
-        "session_id": session_id,
+        "user_id": user_id,
     }
 
 
 @router.get("/api/session/analyses")
 async def get_session_analyses(request: Request, response: Response):
-    session_id = ensure_session_id(request, response)
+    user_id = get_authenticated_user_id(request)
     service = get_analysis_service()
     active = service.get_or_create_active_analysis(
-        user_id=session_id,
+        user_id=user_id,
         active_analysis_id=get_active_analysis_id(request),
     )
     set_active_analysis_id(response, active["analysis_id"])
-    analyses = service.list_analyses(session_id)
+    analyses = service.list_analyses(user_id)
     return {
         "active_analysis_id": active["analysis_id"],
         "analyses": analyses,
@@ -142,9 +147,9 @@ async def get_session_analyses(request: Request, response: Response):
 
 @router.post("/api/session/analysis/new")
 async def start_new_analysis(request: Request, response: Response):
-    session_id = ensure_session_id(request, response)
+    user_id = get_authenticated_user_id(request)
     service = get_analysis_service()
-    created = service.create_analysis(user_id=session_id)
+    created = service.create_analysis(user_id=user_id)
     set_active_analysis_id(response, created["analysis_id"])
     return {
         "active_analysis_id": created["analysis_id"],
@@ -160,9 +165,9 @@ async def start_new_analysis(request: Request, response: Response):
 
 @router.post("/api/session/analysis/activate")
 async def activate_analysis(payload: ActivateAnalysisPayload, request: Request, response: Response):
-    session_id = ensure_session_id(request, response)
+    user_id = get_authenticated_user_id(request)
     service = get_analysis_service()
-    analysis = service.get_analysis(session_id, payload.analysis_id)
+    analysis = service.get_analysis(user_id, payload.analysis_id)
     if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
     set_active_analysis_id(response, payload.analysis_id)
@@ -180,14 +185,14 @@ async def activate_analysis(payload: ActivateAnalysisPayload, request: Request, 
 
 @router.post("/api/session/analysis/research")
 async def save_research_state(payload: ResearchStatePayload, request: Request, response: Response):
-    session_id = ensure_session_id(request, response)
+    user_id = get_authenticated_user_id(request)
     service = get_analysis_service()
     active = service.get_or_create_active_analysis(
-        user_id=session_id,
+        user_id=user_id,
         active_analysis_id=get_active_analysis_id(request),
     )
     updated = service.update_deep_research(
-        user_id=session_id,
+        user_id=user_id,
         analysis_id=active["analysis_id"],
         deep_research=payload.messages,
     )
