@@ -278,6 +278,11 @@
         }
     }
 
+    function getAuthProvider(session) {
+        if (!session || !session.user || !session.user.app_metadata) return "";
+        return String(session.user.app_metadata.provider || "").toLowerCase();
+    }
+
     async function applySession(session) {
         currentSession = session || null;
         state.currentUser = extractCurrentUser(currentSession);
@@ -294,6 +299,12 @@
         if (state.currentUser) {
             closeAuthModal();
             await syncUserWithBackend(currentSession);
+            const provider = getAuthProvider(currentSession);
+            if (provider === "google") {
+                persistPendingMode(null);
+                publishAuthState();
+                return;
+            }
             redirectToPendingWorkspaceIfNeeded();
         }
     }
