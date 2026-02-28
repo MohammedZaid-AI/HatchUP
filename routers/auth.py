@@ -1,9 +1,14 @@
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from src.auth import require_user
 from src.services.user_service import get_user_service
 
 router = APIRouter()
+
+
+class EmailExistsPayload(BaseModel):
+    email: str
 
 
 def _extract_user_name(user) -> str:
@@ -41,4 +46,22 @@ async def sync_user(request: Request):
             "name": persisted.get("name") or "",
             "created_at": persisted["created_at"],
         },
+    }
+
+
+@router.post("/api/auth/email-exists")
+async def email_exists(payload: EmailExistsPayload):
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    try:
+        service = get_user_service()
+        exists = service.auth_user_exists_by_email(email)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unexpected email-exists failure: {exc}") from exc
+    return {
+        "ok": True,
+        "exists": bool(exists),
     }

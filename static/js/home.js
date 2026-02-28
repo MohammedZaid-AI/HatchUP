@@ -2,28 +2,47 @@ function setMode(mode) {
     if (window.HatchupAppState && window.HatchupAppState.setMode) {
         return window.HatchupAppState.setMode(mode);
     }
-    const value = mode === 'founder' ? 'founder' : 'vc';
-    localStorage.setItem('mode', value);
-    localStorage.setItem('hatchup_mode', value);
-    sessionStorage.setItem('hatchup_mode_session', value);
+    const value = mode === "founder" ? "founder" : "vc";
+    localStorage.setItem("mode", value);
+    localStorage.setItem("hatchup_mode", value);
+    sessionStorage.setItem("hatchup_mode_session", value);
     return value;
 }
 
+function normalizeWorkspaceIntent(mode) {
+    if (mode === "founder" || mode === "builders") return "builders";
+    return "backers";
+}
+
+function getWorkspacePath(intentMode) {
+    return intentMode === "builders" ? "/founder" : "/vc/deck-analyzer";
+}
+
 window.enterWorkspace = async function (mode) {
-    const normalizedMode = mode === 'founder' ? 'founder' : 'vc';
-    setMode(normalizedMode);
-    if (window.setAuthIntentMode) {
-        window.setAuthIntentMode(normalizedMode);
+    const intentMode = normalizeWorkspaceIntent(mode);
+    const appMode = intentMode === "builders" ? "founder" : "vc";
+
+    setMode(appMode);
+    if (window.setPendingAuthMode) {
+        window.setPendingAuthMode(intentMode);
     }
+
     if (window.waitForAuthReady) {
         await window.waitForAuthReady();
     }
+
     if (window.isAuthenticated && !window.isAuthenticated()) {
-        const eventName = normalizedMode === 'founder' ? 'signup' : 'login';
-        const authBtn = document.querySelector(`[data-auth-open="${eventName}"]`) || document.querySelector('[data-auth-open="login"]');
-        if (authBtn) authBtn.click();
+        if (window.openAuthModal) {
+            window.openAuthModal(intentMode === "builders" ? "signup" : "login");
+        }
         return;
     }
-    const destination = normalizedMode === 'founder' ? '/founder' : '/vc/deck-analyzer';
-    window.location.href = destination;
+
+    if (window.clearPendingAuthMode) {
+        window.clearPendingAuthMode();
+    }
+    const destination = getWorkspacePath(intentMode);
+    if (window.location.pathname !== destination) {
+        window.location.assign(destination);
+    }
 };

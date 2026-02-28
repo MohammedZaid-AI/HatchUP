@@ -23,8 +23,8 @@
             <span></span>
         </a>
         <div class="home-auth-nav">
-            <button class="home-auth-btn subtle" data-auth="logged-out" data-auth-open="login" onclick="window.openAuthModal && window.openAuthModal('login')" type="button">Login</button>
-            <button class="home-auth-btn" data-auth="logged-out" data-auth-open="signup" onclick="window.openAuthModal && window.openAuthModal('signup')" type="button">Sign Up</button>
+            <button class="home-auth-btn subtle" data-auth="logged-out" data-auth-open="login" type="button">Login</button>
+            <button class="home-auth-btn" data-auth="logged-out" data-auth-open="signup" type="button">Sign Up</button>
             <span id="auth-user-email" class="home-auth-email" data-auth="logged-in" style="display: none;"></span>
             <button id="auth-logout-btn" class="home-auth-btn subtle" data-auth="logged-in" style="display: none;" type="button">Logout</button>
         </div>
@@ -126,34 +126,37 @@
         </div>
     </footer>
 
-    <div id="auth-modal" class="auth-modal" hidden>
-        <div class="auth-modal-card">
-            <button class="auth-close" data-auth-close="true" onclick="window.closeAuthModal && window.closeAuthModal()" type="button" aria-label="Close dialog">X</button>
-            <h2 id="auth-modal-title">Log in to HatchUp</h2>
-            <div class="auth-mode-toggle" role="tablist" aria-label="Authentication mode">
-                <button id="auth-mode-login" class="auth-mode-btn active" data-auth-switch="login" type="button">Login</button>
-                <button id="auth-mode-signup" class="auth-mode-btn" data-auth-switch="signup" type="button">Sign Up</button>
-            </div>
-            <button id="auth-google-btn" class="home-auth-btn auth-google-btn" onclick="window.loginWithGoogle && window.loginWithGoogle()" type="button">Continue with Google</button>
-            <div class="auth-divider"><span>or</span></div>
-            <form id="auth-form" onsubmit="if (window.submitEmailAuth) { window.submitEmailAuth(event); } return false;">
-                <div id="auth-name-row" style="display: none;">
-                    <label for="auth-name">Name</label>
-                    <input id="auth-name" type="text" autocomplete="name" />
+    <template id="auth-modal-template">
+        <div id="auth-modal" class="auth-modal">
+            <div class="auth-modal-card">
+                <button class="auth-close" data-auth-close="true" type="button" aria-label="Close dialog">X</button>
+                <h2 id="auth-modal-title">Log in to HatchUp</h2>
+                <div class="auth-mode-toggle" role="tablist" aria-label="Authentication mode">
+                    <button id="auth-mode-login" class="auth-mode-btn active" data-auth-switch="login" type="button">Login</button>
+                    <button id="auth-mode-signup" class="auth-mode-btn" data-auth-switch="signup" type="button">Sign Up</button>
                 </div>
-                <label for="auth-email">Email</label>
-                <input id="auth-email" type="email" required autocomplete="email" />
-                <label for="auth-password">Password</label>
-                <input id="auth-password" type="password" required minlength="6" autocomplete="current-password" />
-                <button id="auth-submit-btn" class="home-auth-btn auth-submit-btn" type="submit">Login</button>
-            </form>
-            <p id="auth-error" class="auth-error"></p>
+                <button id="auth-google-btn" class="home-auth-btn auth-google-btn" type="button">Continue with Google</button>
+                <div class="auth-divider"><span>or</span></div>
+                <form id="auth-form">
+                    <div id="auth-name-row" style="display: none;">
+                        <label for="auth-name">Name</label>
+                        <input id="auth-name" type="text" autocomplete="name" />
+                    </div>
+                    <label for="auth-email">Email</label>
+                    <input id="auth-email" type="email" required autocomplete="email" />
+                    <label for="auth-password">Password</label>
+                    <input id="auth-password" type="password" required minlength="6" autocomplete="current-password" />
+                    <button id="auth-submit-btn" class="home-auth-btn auth-submit-btn" type="submit">Login</button>
+                </form>
+                <p id="auth-error" class="auth-error"></p>
+            </div>
         </div>
-    </div>
+    </template>
 
-    <script src="/static/js/session.js?v=20260227j"></script>
+    <script src="/static/js/supabaseClient.js?v=20260228a"></script>
+    <script src="/static/js/session.js?v=20260228a"></script>
     <script src="/static/js/mode_state.js?v=20260224c"></script>
-    <script src="/static/js/home.js?v=20260227e"></script>
+    <script src="/static/js/home.js?v=20260228a"></script>
 </body>
 
 </html>

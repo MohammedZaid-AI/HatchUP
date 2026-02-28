@@ -250,6 +250,10 @@ body.mode-loading .mode-loader {
     font-size: 0.82rem;
 }
 
+.auth-error.success {
+    color: #059669;
+}
+
 .home-logo {
     width: 72px;
     height: 72px;

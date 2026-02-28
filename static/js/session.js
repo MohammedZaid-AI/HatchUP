@@ -1,70 +1,57 @@
 (function () {
     const AUTH_COOKIE_NAME = "hatchup_access_token";
     const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
-    const LEGACY_SESSION_KEY = "hatchup_sid";
-    const ANALYSIS_WORKSPACE_KEY = "hatchup_workspace_cache";
-    const LEGACY_ANALYSIS_KEY = "hatchup_analysis";
-    const LEGACY_RESEARCH_KEY = "hatchup_deep_research_history";
-    const AUTH_INTENT_KEY = "hatchup_auth_intent_mode";
-    const PENDING_MODE_KEY = "pending_mode";
+    const PENDING_MODE_KEY = "hatchup_pending_mode";
 
-    let supabaseClient = null;
+    const state = {
+        currentUser: null,
+        isAuthReady: false,
+        isAuthModalOpen: false,
+        pendingMode: null,
+    };
+
     let currentSession = null;
-    let currentUser = null;
+    let supabaseClient = null;
+    let authUiBound = false;
     let authReadyResolve;
     const authReady = new Promise((resolve) => {
         authReadyResolve = resolve;
     });
-    let handlingAuthSuccess = false;
-    let lastHandledAccessToken = null;
-    let authUiBound = false;
 
-    function getSupabaseConfig() {
-        return window.HATCHUP_SUPABASE || {};
+    function normalizePendingMode(mode) {
+        if (mode === "founder" || mode === "builders") return "builders";
+        if (mode === "vc" || mode === "backers") return "backers";
+        return null;
     }
 
-    function sleep(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
+    function pendingModeToWorkspacePath(mode) {
+        return mode === "builders" ? "/founder" : "/vc/deck-analyzer";
     }
 
-    function normalizeMode(mode) {
-        return mode === "founder" ? "founder" : "vc";
+    function pendingModeToAppMode(mode) {
+        return mode === "builders" ? "founder" : "vc";
     }
 
-    function setAuthIntentMode(mode) {
-        const normalizedMode = normalizeMode(mode);
+    function readPendingMode() {
         try {
-            localStorage.setItem(AUTH_INTENT_KEY, normalizedMode);
-            localStorage.setItem(PENDING_MODE_KEY, normalizedMode);
-        } catch (_) {
-            // Ignore storage errors.
-        }
-    }
-
-    function getAuthIntentMode() {
-        try {
-            const value = localStorage.getItem(AUTH_INTENT_KEY);
-            return value ? normalizeMode(value) : null;
+            return normalizePendingMode(localStorage.getItem(PENDING_MODE_KEY));
         } catch (_) {
             return null;
         }
     }
 
-    function clearAuthIntentMode() {
+    function persistPendingMode(mode) {
+        const normalized = normalizePendingMode(mode);
+        state.pendingMode = normalized;
         try {
-            localStorage.removeItem(AUTH_INTENT_KEY);
-            localStorage.removeItem(PENDING_MODE_KEY);
+            if (normalized) {
+                localStorage.setItem(PENDING_MODE_KEY, normalized);
+            } else {
+                localStorage.removeItem(PENDING_MODE_KEY);
+            }
         } catch (_) {
             // Ignore storage errors.
         }
-    }
-
-    function getModeWorkspacePath(mode) {
-        const normalized = normalizeMode(mode);
-        if (normalized === "founder") {
-            return "/founder";
-        }
-        return "/vc/deck-analyzer";
     }
 
     function setAuthCookie(token) {
@@ -75,42 +62,64 @@
         document.cookie = `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
     }
 
-    function clearLocalWorkspaceCache() {
-        localStorage.removeItem(LEGACY_SESSION_KEY);
-        localStorage.removeItem(ANALYSIS_WORKSPACE_KEY);
-        localStorage.removeItem(LEGACY_ANALYSIS_KEY);
-        localStorage.removeItem(LEGACY_RESEARCH_KEY);
-    }
-
     function extractName(user) {
         if (!user) return "";
         const metadata = user.user_metadata || {};
         return metadata.full_name || metadata.name || metadata.preferred_name || "";
     }
 
-    function extractUser(session) {
+    function extractCurrentUser(session) {
         if (!session || !session.user) return null;
-        const user = session.user;
         return {
-            id: user.id || "",
-            email: user.email || "",
-            name: extractName(user),
+            id: session.user.id || "",
+            email: session.user.email || "",
+            name: extractName(session.user),
         };
     }
 
-    function updateAuthUi(session) {
-        const isAuthed = !!(session && session.user);
+    function updateAuthUi() {
+        const isAuthenticated = !!state.currentUser;
         document.querySelectorAll('[data-auth="logged-out"]').forEach((el) => {
-            el.style.display = isAuthed ? "none" : "";
+            el.style.display = isAuthenticated ? "none" : "";
         });
         document.querySelectorAll('[data-auth="logged-in"]').forEach((el) => {
-            el.style.display = isAuthed ? "" : "none";
+            el.style.display = isAuthenticated ? "" : "none";
         });
-
         const emailNode = document.getElementById("auth-user-email");
         if (emailNode) {
-            emailNode.textContent = isAuthed ? (session.user.email || "Signed in") : "";
+            emailNode.textContent = isAuthenticated ? (state.currentUser.email || "Signed in") : "";
         }
+    }
+
+    function publishAuthState() {
+        window.HatchupAuthState = {
+            currentUser: state.currentUser,
+            isAuthReady: state.isAuthReady,
+            isAuthModalOpen: state.isAuthModalOpen,
+            pendingMode: state.pendingMode,
+        };
+        window.dispatchEvent(new CustomEvent("hatchup:authchange", {
+            detail: {
+                currentUser: state.currentUser,
+                session: currentSession,
+                pendingMode: state.pendingMode,
+            },
+        }));
+    }
+
+    function setAuthReady() {
+        if (!state.isAuthReady) {
+            state.isAuthReady = true;
+            publishAuthState();
+            authReadyResolve();
+        }
+    }
+
+    function setAuthMessage(message, type) {
+        const node = document.getElementById("auth-error");
+        if (!node) return;
+        node.textContent = message || "";
+        node.classList.toggle("success", type === "success");
     }
 
     function setAuthLoading(loading) {
@@ -120,29 +129,20 @@
         if (googleBtn) googleBtn.disabled = !!loading;
     }
 
-    function setAuthModalOpen(isOpen) {
-        const modal = document.getElementById("auth-modal");
-        if (!modal) return;
-        modal.hidden = !isOpen;
-        if (!isOpen) {
-            const error = document.getElementById("auth-error");
-            if (error) error.textContent = "";
-            setAuthLoading(false);
-        }
-    }
-
-    function closeAuthModal() {
-        setAuthModalOpen(false);
+    function getAuthModalElement() {
+        return document.getElementById("auth-modal");
     }
 
     function applyAuthMode(mode) {
-        const modal = document.getElementById("auth-modal");
+        const modal = getAuthModalElement();
         if (!modal) return;
+
         const resolvedMode = mode === "signup" ? "signup" : "login";
         modal.dataset.mode = resolvedMode;
+        setAuthMessage("");
 
         const title = document.getElementById("auth-modal-title");
-        const action = document.getElementById("auth-submit-btn");
+        const submitBtn = document.getElementById("auth-submit-btn");
         const passwordInput = document.getElementById("auth-password");
         const nameRow = document.getElementById("auth-name-row");
         const nameInput = document.getElementById("auth-name");
@@ -152,8 +152,8 @@
         if (title) {
             title.textContent = resolvedMode === "signup" ? "Create your account" : "Log in to HatchUp";
         }
-        if (action) {
-            action.textContent = resolvedMode === "signup" ? "Sign Up" : "Login";
+        if (submitBtn) {
+            submitBtn.textContent = resolvedMode === "signup" ? "Sign Up" : "Login";
         }
         if (passwordInput) {
             passwordInput.setAttribute("autocomplete", resolvedMode === "signup" ? "new-password" : "current-password");
@@ -166,189 +166,139 @@
         }
         if (loginToggle) {
             loginToggle.classList.toggle("active", resolvedMode === "login");
-            loginToggle.setAttribute("aria-selected", resolvedMode === "login" ? "true" : "false");
         }
         if (signupToggle) {
             signupToggle.classList.toggle("active", resolvedMode === "signup");
-            signupToggle.setAttribute("aria-selected", resolvedMode === "signup" ? "true" : "false");
         }
     }
 
-    async function waitForActiveSession(timeoutMs = 8000) {
-        if (!supabaseClient) return null;
-        const start = Date.now();
-        while (Date.now() - start < timeoutMs) {
-            const { data } = await supabaseClient.auth.getSession();
-            if (data && data.session && data.session.access_token) {
-                return data.session;
-            }
-            await sleep(120);
-        }
-        return null;
-    }
+    function bindAuthModalUi(modal) {
+        if (!modal) return;
+        if (modal.dataset.bound === "true") return;
+        modal.dataset.bound = "true";
 
-    async function syncUserWithBackend(session) {
-        if (!session || !session.access_token) return;
-        const response = await fetch("/api/auth/sync-user", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${session.access_token}`,
-            },
-            credentials: "same-origin",
-            cache: "no-store",
+        const closeBtn = modal.querySelector('[data-auth-close="true"]');
+        if (closeBtn) {
+            closeBtn.addEventListener("click", closeAuthModal);
+        }
+
+        modal.querySelectorAll("[data-auth-switch]").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                applyAuthMode(btn.getAttribute("data-auth-switch"));
+            });
         });
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(text || "Failed to sync user");
-        }
-    }
 
-    function navigateToAuthIntent() {
-        let intendedMode = getAuthIntentMode();
-        if (!intendedMode) {
-            try {
-                const pendingMode = localStorage.getItem(PENDING_MODE_KEY);
-                intendedMode = pendingMode ? normalizeMode(pendingMode) : null;
-            } catch (_) {
-                intendedMode = null;
+        const form = modal.querySelector("#auth-form");
+        if (form) {
+            form.addEventListener("submit", submitEmailAuth);
+        }
+
+        const googleBtn = modal.querySelector("#auth-google-btn");
+        if (googleBtn) {
+            googleBtn.addEventListener("click", loginWithGoogle);
+        }
+
+        modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+                closeAuthModal();
             }
-        }
-        if (!intendedMode) return false;
-        clearAuthIntentMode();
-        try {
-            localStorage.removeItem(PENDING_MODE_KEY);
-        } catch (_) {
-            // Ignore storage errors.
-        }
-        if (window.HatchupAppState && window.HatchupAppState.setMode) {
-            window.HatchupAppState.setMode(intendedMode);
-        } else {
-            try {
-                localStorage.setItem("mode", intendedMode);
-                localStorage.setItem("hatchup_mode", intendedMode);
-                sessionStorage.setItem("hatchup_mode_session", intendedMode);
-            } catch (_) {
-                // Ignore storage errors.
-            }
-        }
-        const destination = getModeWorkspacePath(intendedMode);
-        if (window.location.pathname + window.location.search !== destination) {
-            window.location.href = destination;
-            return true;
-        }
-        return false;
-    }
-
-    async function handlePostAuthSuccess(session) {
-        if (!session || !session.access_token || !session.user) return;
-        if (handlingAuthSuccess) return;
-        if (lastHandledAccessToken === session.access_token) return;
-
-        handlingAuthSuccess = true;
-        let syncError = null;
-        try {
-            await syncUserWithBackend(session);
-        } catch (error) {
-            syncError = error;
-            console.error("Auth user sync failed", error);
-        } finally {
-            lastHandledAccessToken = session.access_token;
-            closeAuthModal();
-            navigateToAuthIntent();
-            if (syncError) {
-                window.dispatchEvent(new CustomEvent("hatchup:authsyncwarning", {
-                    detail: {
-                        message: syncError.message || "Failed to sync user profile",
-                    },
-                }));
-            }
-            handlingAuthSuccess = false;
-        }
-    }
-
-    function setSession(session) {
-        const previousToken = currentSession && currentSession.access_token ? currentSession.access_token : null;
-        currentSession = session || null;
-        currentUser = extractUser(currentSession);
-        setAuthLoading(false);
-        const token = currentSession && currentSession.access_token;
-        if (token) {
-            setAuthCookie(token);
-        } else {
-            clearAuthCookie();
-            lastHandledAccessToken = null;
-        }
-        updateAuthUi(currentSession);
-        window.dispatchEvent(new CustomEvent("hatchup:authchange", {
-            detail: {
-                session: currentSession,
-                user: currentUser,
-            },
-        }));
-
-        if (token && token !== previousToken) {
-            void handlePostAuthSuccess(currentSession);
-        }
-    }
-
-    function ensureFetchAuthWrapper() {
-        if (!window.fetch || window.fetch.__hatchupWrapped) return;
-        const originalFetch = window.fetch.bind(window);
-        const wrappedFetch = async function (input, init) {
-            const requestInit = init ? { ...init } : {};
-            await authReady;
-            const headers = new Headers(requestInit.headers || {});
-            if (!headers.has("Authorization")) {
-                const token = currentSession && currentSession.access_token;
-                if (token) headers.set("Authorization", `Bearer ${token}`);
-            }
-            if (window.getActiveAnalysisId && !headers.has("X-Hatchup-Analysis-Id")) {
-                const analysisId = window.getActiveAnalysisId();
-                if (analysisId) headers.set("X-Hatchup-Analysis-Id", analysisId);
-            }
-            requestInit.headers = headers;
-            return originalFetch(input, requestInit);
-        };
-        wrappedFetch.__hatchupWrapped = true;
-        window.fetch = wrappedFetch;
-    }
-
-    async function bootstrapSupabase() {
-        const config = getSupabaseConfig();
-        if (!window.supabase || !config.url || !config.anonKey) {
-            authReadyResolve();
-            return;
-        }
-
-        supabaseClient = window.supabase.createClient(config.url, config.anonKey);
-        try {
-            const { data } = await supabaseClient.auth.getSession();
-            setSession(data ? data.session : null);
-        } catch (_) {
-            setSession(null);
-        } finally {
-            authReadyResolve();
-        }
-
-        supabaseClient.auth.onAuthStateChange((_event, session) => {
-            setSession(session || null);
         });
+    }
+
+    function ensureAuthModalRendered() {
+        let modal = getAuthModalElement();
+        if (modal) {
+            bindAuthModalUi(modal);
+            return modal;
+        }
+
+        const template = document.getElementById("auth-modal-template");
+        if (!template || !template.content) {
+            return null;
+        }
+
+        const fragment = template.content.cloneNode(true);
+        document.body.appendChild(fragment);
+        modal = getAuthModalElement();
+        bindAuthModalUi(modal);
+        return modal;
+    }
+
+    function setAuthModalOpen(isOpen) {
+        state.isAuthModalOpen = !!isOpen;
+        const modal = state.isAuthModalOpen ? ensureAuthModalRendered() : getAuthModalElement();
+        if (modal) {
+            modal.hidden = !state.isAuthModalOpen;
+            modal.style.display = state.isAuthModalOpen ? "flex" : "none";
+        }
+        if (!state.isAuthModalOpen) {
+            setAuthLoading(false);
+            setAuthMessage("");
+        }
+        publishAuthState();
     }
 
     function openAuthModal(mode) {
-        const modal = document.getElementById("auth-modal");
-        if (!modal) return;
         setAuthModalOpen(true);
         applyAuthMode(mode);
     }
 
-    async function loginWithEmail(email, password) {
-        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        return data ? data.session : null;
+    function closeAuthModal() {
+        setAuthModalOpen(false);
     }
 
-    async function signUpWithEmail(email, password, name) {
+    async function syncUserWithBackend(session) {
+        if (!session || !session.access_token) return;
+        try {
+            await fetch("/api/auth/sync-user", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                credentials: "same-origin",
+                cache: "no-store",
+            });
+        } catch (_) {
+            // Keep auth UI resilient even if sync endpoint is unavailable.
+        }
+    }
+
+    function redirectToPendingWorkspaceIfNeeded() {
+        const pendingMode = normalizePendingMode(state.pendingMode || readPendingMode());
+        if (!pendingMode || !state.currentUser) return;
+
+        persistPendingMode(null);
+        const appMode = pendingModeToAppMode(pendingMode);
+        if (window.HatchupAppState && window.HatchupAppState.setMode) {
+            window.HatchupAppState.setMode(appMode);
+        }
+        const destination = pendingModeToWorkspacePath(pendingMode);
+        if (window.location.pathname !== destination) {
+            window.location.assign(destination);
+        }
+    }
+
+    async function applySession(session) {
+        currentSession = session || null;
+        state.currentUser = extractCurrentUser(currentSession);
+
+        if (currentSession && currentSession.access_token) {
+            setAuthCookie(currentSession.access_token);
+        } else {
+            clearAuthCookie();
+        }
+
+        updateAuthUi();
+        publishAuthState();
+
+        if (state.currentUser) {
+            closeAuthModal();
+            await syncUserWithBackend(currentSession);
+            redirectToPendingWorkspaceIfNeeded();
+        }
+    }
+
+    async function handleSignup(email, password, name) {
         const metadata = {};
         const trimmedName = (name || "").trim();
         if (trimmedName) {
@@ -359,18 +309,39 @@
         const { data, error } = await supabaseClient.auth.signUp({
             email,
             password,
-            options: {
-                data: metadata,
-            },
+            options: { data: metadata },
         });
+
         if (error) {
-            const msg = String(error.message || "").toLowerCase();
-            if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
-                throw new Error("This email is already signed up. Please log in.");
+            const message = String(error.message || "").toLowerCase();
+            if (message.includes("already registered") || message.includes("already exists") || message.includes("user already")) {
+                throw new Error("This email is already registered. Please log in.");
             }
             throw error;
         }
-        return data || null;
+
+        if (!data || !data.session) {
+            setAuthMessage("Check your email to confirm your account.", "success");
+        }
+    }
+
+    async function checkAuthAccountExists(email) {
+        const normalizedEmail = (email || "").trim().toLowerCase();
+        if (!normalizedEmail) return null;
+        try {
+            const response = await fetch("/api/auth/email-exists", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "same-origin",
+                cache: "no-store",
+                body: JSON.stringify({ email: normalizedEmail }),
+            });
+            if (!response.ok) return null;
+            const payload = await response.json();
+            return !!(payload && payload.exists);
+        } catch (_) {
+            return null;
+        }
     }
 
     async function submitEmailAuth(event) {
@@ -378,67 +349,49 @@
             event.preventDefault();
         }
         if (!supabaseClient) {
-            const errorNode = document.getElementById("auth-error");
-            if (errorNode) errorNode.textContent = "Authentication is not ready. Please refresh and try again.";
+            setAuthMessage("Authentication is not configured.");
             return false;
         }
-        const modal = document.getElementById("auth-modal");
+
+        const modal = getAuthModalElement();
+        const mode = modal && modal.dataset.mode === "signup" ? "signup" : "login";
         const nameInput = document.getElementById("auth-name");
         const emailInput = document.getElementById("auth-email");
         const passwordInput = document.getElementById("auth-password");
-        const errorNode = document.getElementById("auth-error");
 
-        if (!emailInput || !passwordInput) return false;
-        if (errorNode) errorNode.textContent = "";
-        setAuthLoading(true);
+        if (!emailInput || !passwordInput) {
+            return false;
+        }
 
         const email = emailInput.value.trim();
         const password = passwordInput.value;
         const name = nameInput ? nameInput.value.trim() : "";
 
+        setAuthMessage("");
+        setAuthLoading(true);
         try {
-            let session = null;
-            if ((modal && modal.dataset.mode) === "signup") {
-                const signUpData = await signUpWithEmail(email, password, name);
-                if (signUpData && signUpData.user && signUpData.session) {
-                    await supabaseClient.auth.signOut();
-                    setSession(null);
-                    applyAuthMode("login");
-                    if (errorNode) errorNode.textContent = "Sign up successful. Please log in.";
-                    return false;
-                }
-                if (signUpData && signUpData.user) {
-                    applyAuthMode("login");
-                    if (errorNode) errorNode.textContent = "Sign up successful. Please confirm email, then log in.";
-                    return false;
-                }
-                throw new Error("Sign up failed. Please try again.");
+            if (mode === "signup") {
+                await handleSignup(email, password, name);
             } else {
-                session = await loginWithEmail(email, password);
+                const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) throw error;
             }
-
-            const activeSession = session || (await waitForActiveSession());
-            if (!activeSession) {
-                throw new Error("Authenticated session not available");
-            }
-            setSession(activeSession);
-            await handlePostAuthSuccess(activeSession);
-        } catch (authError) {
-            if (errorNode) {
-                const rawMessage = authError && authError.message ? authError.message : "Authentication failed";
-                const normalized = String(rawMessage).toLowerCase();
-                if (normalized.includes("invalid login credentials") || normalized.includes("user not found")) {
-                    const isLoginMode = (modal && modal.dataset.mode) !== "signup";
-                    errorNode.textContent = isLoginMode
-                        ? "Please sign up first. No account found for this email."
-                        : "User does not exist or password is incorrect.";
-                } else if (normalized.includes("email not confirmed")) {
-                    errorNode.textContent = "Email not confirmed. Check your inbox and verify your email first.";
-                } else if (normalized.includes("rate limit") || normalized.includes("email rate limit")) {
-                    errorNode.textContent = "Too many email attempts. Please wait a few minutes and try again.";
+        } catch (error) {
+            const message = String(error && error.message ? error.message : "Authentication failed");
+            const normalized = message.toLowerCase();
+            if (mode === "login" && (normalized.includes("invalid login credentials") || normalized.includes("user not found"))) {
+                const exists = await checkAuthAccountExists(email);
+                if (exists === false) {
+                    setAuthMessage("Account not found. Please sign up.");
                 } else {
-                    errorNode.textContent = rawMessage;
+                    setAuthMessage("Invalid email or password.");
                 }
+            } else if (normalized.includes("already registered") || normalized.includes("already exists") || normalized.includes("user already")) {
+                setAuthMessage("This email is already registered. Please log in.");
+            } else if (normalized.includes("email not confirmed")) {
+                setAuthMessage("Check your email to confirm your account.");
+            } else {
+                setAuthMessage(message);
             }
         } finally {
             setAuthLoading(false);
@@ -448,21 +401,18 @@
 
     async function loginWithGoogle() {
         if (!supabaseClient) return;
-        const errorNode = document.getElementById("auth-error");
-        if (errorNode) errorNode.textContent = "";
+        setAuthMessage("");
         setAuthLoading(true);
         try {
             const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: "google",
                 options: {
-                    redirectTo: `${window.location.origin}/`,
+                    redirectTo: window.location.origin,
                 },
             });
             if (error) throw error;
         } catch (error) {
-            if (errorNode) {
-                errorNode.textContent = error && error.message ? error.message : "Google sign-in failed";
-            }
+            setAuthMessage(error && error.message ? error.message : "Google sign-in failed");
             setAuthLoading(false);
         }
     }
@@ -470,12 +420,12 @@
     async function logout() {
         if (supabaseClient) {
             await supabaseClient.auth.signOut();
+        } else {
+            await applySession(null);
         }
-        setSession(null);
-        clearLocalWorkspaceCache();
-        clearAuthIntentMode();
+        persistPendingMode(null);
         if (window.location.pathname !== "/") {
-            window.location.href = "/";
+            window.location.assign("/");
         }
     }
 
@@ -489,29 +439,33 @@
         document.querySelectorAll('[data-auth-open="signup"]').forEach((btn) => {
             btn.addEventListener("click", () => openAuthModal("signup"));
         });
-        document.querySelectorAll('[data-auth-switch]').forEach((btn) => {
-            btn.addEventListener("click", () => {
-                applyAuthMode(btn.getAttribute("data-auth-switch"));
-            });
-        });
-        document.querySelectorAll('[data-auth-close="true"]').forEach((btn) => {
-            btn.addEventListener("click", closeAuthModal);
-        });
-
-        const form = document.getElementById("auth-form");
-        if (form) {
-            form.addEventListener("submit", submitEmailAuth);
-        }
-
-        const googleBtn = document.getElementById("auth-google-btn");
-        if (googleBtn) {
-            googleBtn.addEventListener("click", loginWithGoogle);
-        }
 
         const logoutBtn = document.getElementById("auth-logout-btn");
         if (logoutBtn) {
-            logoutBtn.addEventListener("click", logout);
+            logoutBtn.addEventListener("click", () => {
+                void logout();
+            });
         }
+    }
+
+    async function bootstrapAuth() {
+        state.pendingMode = readPendingMode();
+        publishAuthState();
+        supabaseClient = window.getSupabaseClient ? window.getSupabaseClient() : null;
+
+        if (!supabaseClient) {
+            updateAuthUi();
+            setAuthReady();
+            return;
+        }
+
+        const { data } = await supabaseClient.auth.getSession();
+        await applySession(data ? data.session : null);
+        setAuthReady();
+
+        supabaseClient.auth.onAuthStateChange((_event, session) => {
+            void applySession(session || null);
+        });
     }
 
     window.waitForAuthReady = function () {
@@ -520,41 +474,59 @@
 
     window.getHatchupSessionHeaders = function () {
         const headers = {};
-        const token = currentSession && currentSession.access_token;
-        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (currentSession && currentSession.access_token) {
+            headers.Authorization = `Bearer ${currentSession.access_token}`;
+        }
         if (window.getActiveAnalysisId) {
-            const activeAnalysisId = window.getActiveAnalysisId();
-            if (activeAnalysisId) headers["X-Hatchup-Analysis-Id"] = activeAnalysisId;
+            const analysisId = window.getActiveAnalysisId();
+            if (analysisId) {
+                headers["X-Hatchup-Analysis-Id"] = analysisId;
+            }
         }
         return headers;
     };
 
+    window.getHatchupAccessToken = function () {
+        return currentSession && currentSession.access_token ? currentSession.access_token : "";
+    };
+
     window.isAuthenticated = function () {
-        return !!(currentSession && currentSession.user);
+        return !!state.currentUser;
     };
 
     window.getCurrentHatchupUser = function () {
-        return currentUser ? { ...currentUser } : null;
+        return state.currentUser ? { ...state.currentUser } : null;
     };
 
-    window.setAuthIntentMode = setAuthIntentMode;
-    window.getAuthIntentMode = getAuthIntentMode;
-    window.clearAuthIntentMode = clearAuthIntentMode;
-    window.navigateToAuthIntent = navigateToAuthIntent;
-    window.setAuthModalOpen = setAuthModalOpen;
-    window.closeAuthModal = closeAuthModal;
+    window.setPendingAuthMode = function (mode) {
+        persistPendingMode(mode);
+        publishAuthState();
+    };
+
+    window.clearPendingAuthMode = function () {
+        persistPendingMode(null);
+        publishAuthState();
+    };
+
     window.openAuthModal = openAuthModal;
+    window.closeAuthModal = closeAuthModal;
     window.submitEmailAuth = submitEmailAuth;
     window.loginWithGoogle = loginWithGoogle;
     window.logoutHatchup = logout;
-    window.__HATCHUP_SESSION_VERSION = "20260227j";
-
-    ensureFetchAuthWrapper();
-    void bootstrapSupabase();
+    window.HatchupAuthState = {
+        currentUser: null,
+        isAuthReady: false,
+        isAuthModalOpen: false,
+        pendingMode: null,
+    };
 
     if (document.readyState === "loading") {
         window.addEventListener("DOMContentLoaded", bindAuthUi);
     } else {
         bindAuthUi();
     }
+
+    void bootstrapAuth().catch(() => {
+        setAuthReady();
+    });
 })();
