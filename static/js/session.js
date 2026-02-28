@@ -1,18 +1,22 @@
-(function () {
+﻿(function () {
     const AUTH_COOKIE_NAME = "hatchup_access_token";
     const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
     const PENDING_MODE_KEY = "hatchup_pending_mode";
+    const AVATAR_BUCKET = "avatars";
+    const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
     const state = {
         currentUser: null,
         isAuthReady: false,
         isAuthModalOpen: false,
         pendingMode: null,
+        profile: null,
     };
 
     let currentSession = null;
     let supabaseClient = null;
     let authUiBound = false;
+    let profileUiBound = false;
     let authReadyResolve;
     const authReady = new Promise((resolve) => {
         authReadyResolve = resolve;
@@ -68,13 +72,59 @@
         return metadata.full_name || metadata.name || metadata.preferred_name || "";
     }
 
+    function extractAvatar(user) {
+        if (!user) return "";
+        const metadata = user.user_metadata || {};
+        return metadata.avatar_url || metadata.picture || "";
+    }
+
     function extractCurrentUser(session) {
         if (!session || !session.user) return null;
         return {
             id: session.user.id || "",
             email: session.user.email || "",
             name: extractName(session.user),
+            avatar_url: extractAvatar(session.user),
         };
+    }
+
+    function getDisplayName() {
+        const fromProfile = state.profile && state.profile.full_name ? state.profile.full_name.trim() : "";
+        if (fromProfile) return fromProfile;
+        const fromUser = state.currentUser && state.currentUser.name ? state.currentUser.name.trim() : "";
+        if (fromUser) return fromUser;
+        const email = state.currentUser && state.currentUser.email ? state.currentUser.email : "";
+        if (email && email.includes("@")) return email.split("@")[0];
+        return "User";
+    }
+
+    function getDisplayEmail() {
+        if (state.profile && state.profile.email) return state.profile.email;
+        return state.currentUser && state.currentUser.email ? state.currentUser.email : "";
+    }
+
+    function getAvatarUrl() {
+        if (state.profile && state.profile.avatar_url) return state.profile.avatar_url;
+        return state.currentUser && state.currentUser.avatar_url ? state.currentUser.avatar_url : "";
+    }
+
+    function getAvatarInitial() {
+        const name = getDisplayName();
+        if (!name) return "U";
+        return name.charAt(0).toUpperCase();
+    }
+
+    function renderAvatarNode(node, avatarUrl, initial) {
+        if (!node) return;
+        if (avatarUrl) {
+            node.innerHTML = `<img src="${avatarUrl}" alt="Profile avatar" />`;
+            return;
+        }
+        if (initial) {
+            node.textContent = initial;
+            return;
+        }
+        node.textContent = "U";
     }
 
     function updateAuthUi() {
@@ -85,9 +135,28 @@
         document.querySelectorAll('[data-auth="logged-in"]').forEach((el) => {
             el.style.display = isAuthenticated ? "" : "none";
         });
-        const emailNode = document.getElementById("auth-user-email");
-        if (emailNode) {
-            emailNode.textContent = isAuthenticated ? (state.currentUser.email || "Signed in") : "";
+
+        const displayName = getDisplayName();
+        const displayEmail = getDisplayEmail();
+        const avatarUrl = getAvatarUrl();
+        const avatarInitial = getAvatarInitial();
+
+        document.querySelectorAll('[data-profile-name="true"]').forEach((el) => {
+            el.textContent = isAuthenticated ? displayName : "";
+        });
+        document.querySelectorAll('[data-profile-email="true"]').forEach((el) => {
+            el.textContent = isAuthenticated ? displayEmail : "";
+        });
+        document.querySelectorAll('[data-profile-avatar="true"]').forEach((el) => {
+            renderAvatarNode(el, isAuthenticated ? avatarUrl : "", isAuthenticated ? avatarInitial : "");
+        });
+        document.querySelectorAll('[data-profile-modal-avatar="true"]').forEach((el) => {
+            renderAvatarNode(el, isAuthenticated ? avatarUrl : "", isAuthenticated ? avatarInitial : "");
+        });
+
+        if (!isAuthenticated) {
+            closeProfileDropdown();
+            closeProfileModal();
         }
     }
 
@@ -103,6 +172,7 @@
                 currentUser: state.currentUser,
                 session: currentSession,
                 pendingMode: state.pendingMode,
+                profile: state.profile,
             },
         }));
     }
@@ -173,14 +243,11 @@
     }
 
     function bindAuthModalUi(modal) {
-        if (!modal) return;
-        if (modal.dataset.bound === "true") return;
+        if (!modal || modal.dataset.bound === "true") return;
         modal.dataset.bound = "true";
 
         const closeBtn = modal.querySelector('[data-auth-close="true"]');
-        if (closeBtn) {
-            closeBtn.addEventListener("click", closeAuthModal);
-        }
+        if (closeBtn) closeBtn.addEventListener("click", closeAuthModal);
 
         modal.querySelectorAll("[data-auth-switch]").forEach((btn) => {
             btn.addEventListener("click", () => {
@@ -189,19 +256,13 @@
         });
 
         const form = modal.querySelector("#auth-form");
-        if (form) {
-            form.addEventListener("submit", submitEmailAuth);
-        }
+        if (form) form.addEventListener("submit", submitEmailAuth);
 
         const googleBtn = modal.querySelector("#auth-google-btn");
-        if (googleBtn) {
-            googleBtn.addEventListener("click", loginWithGoogle);
-        }
+        if (googleBtn) googleBtn.addEventListener("click", loginWithGoogle);
 
         modal.addEventListener("click", (event) => {
-            if (event.target === modal) {
-                closeAuthModal();
-            }
+            if (event.target === modal) closeAuthModal();
         });
     }
 
@@ -211,12 +272,8 @@
             bindAuthModalUi(modal);
             return modal;
         }
-
         const template = document.getElementById("auth-modal-template");
-        if (!template || !template.content) {
-            return null;
-        }
-
+        if (!template || !template.content) return null;
         const fragment = template.content.cloneNode(true);
         document.body.appendChild(fragment);
         modal = getAuthModalElement();
@@ -247,10 +304,126 @@
         setAuthModalOpen(false);
     }
 
+    function getProfileModalElement() {
+        return document.getElementById("profile-modal");
+    }
+
+    function setProfileMessage(message, type) {
+        const node = document.getElementById("profile-error");
+        if (!node) return;
+        node.textContent = message || "";
+        node.classList.toggle("success", type === "success");
+    }
+
+    function setProfileLoading(loading) {
+        const saveBtn = document.getElementById("profile-save-btn");
+        if (saveBtn) saveBtn.disabled = !!loading;
+    }
+
+    function bindProfileModalUi(modal) {
+        if (!modal || modal.dataset.bound === "true") return;
+        modal.dataset.bound = "true";
+
+        const closeBtn = modal.querySelector('[data-profile-close="true"]');
+        if (closeBtn) closeBtn.addEventListener("click", closeProfileModal);
+
+        const form = modal.querySelector("#profile-form");
+        if (form) form.addEventListener("submit", submitProfileForm);
+
+        const fileInput = modal.querySelector("#profile-avatar-file");
+        if (fileInput) {
+            fileInput.addEventListener("change", () => {
+                const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+                if (!file) {
+                    updateAuthUi();
+                    return;
+                }
+                const previewUrl = URL.createObjectURL(file);
+                document.querySelectorAll('[data-profile-modal-avatar="true"]').forEach((el) => {
+                    renderAvatarNode(el, previewUrl, "");
+                });
+            });
+        }
+
+        modal.addEventListener("click", (event) => {
+            if (event.target === modal) closeProfileModal();
+        });
+    }
+
+    function ensureProfileModalRendered() {
+        let modal = getProfileModalElement();
+        if (modal) {
+            bindProfileModalUi(modal);
+            return modal;
+        }
+        const template = document.getElementById("profile-modal-template");
+        if (!template || !template.content) return null;
+        const fragment = template.content.cloneNode(true);
+        document.body.appendChild(fragment);
+        modal = getProfileModalElement();
+        bindProfileModalUi(modal);
+        return modal;
+    }
+
+    function openProfileModal() {
+        if (!state.currentUser) return;
+        const modal = ensureProfileModalRendered();
+        if (!modal) return;
+        const nameInput = modal.querySelector("#profile-full-name");
+        const fileInput = modal.querySelector("#profile-avatar-file");
+        if (nameInput) nameInput.value = getDisplayName();
+        if (fileInput) fileInput.value = "";
+        setProfileMessage("");
+        setProfileLoading(false);
+        updateAuthUi();
+        modal.hidden = false;
+        modal.style.display = "flex";
+        closeProfileDropdown();
+    }
+
+    function closeProfileModal() {
+        const modal = getProfileModalElement();
+        if (!modal) return;
+        modal.hidden = true;
+        modal.style.display = "none";
+        setProfileLoading(false);
+        setProfileMessage("");
+    }
+
+    function closeProfileDropdown() {
+        document.querySelectorAll('[data-profile-dropdown="true"]').forEach((menu) => {
+            menu.hidden = true;
+            menu.classList.remove("open");
+        });
+        document.querySelectorAll('[data-profile-toggle="true"]').forEach((btn) => {
+            btn.setAttribute("aria-expanded", "false");
+        });
+    }
+
+    function toggleProfileDropdown(button) {
+        const wrapper = button.closest(".profile-menu");
+        if (!wrapper) return;
+        const menu = wrapper.querySelector('[data-profile-dropdown="true"]');
+        if (!menu) return;
+
+        const shouldOpen = menu.hidden;
+        closeProfileDropdown();
+        if (shouldOpen) {
+            menu.hidden = false;
+            requestAnimationFrame(() => menu.classList.add("open"));
+            button.setAttribute("aria-expanded", "true");
+        }
+    }
+
+    function getAuthProvider(session) {
+        if (!session || !session.user || !session.user.app_metadata) return "";
+        return String(session.user.app_metadata.provider || "").toLowerCase();
+    }
+
     async function syncUserWithBackend(session) {
-        if (!session || !session.access_token) return;
+        if (!session || !session.access_token) return null;
         try {
-            await fetch("/api/auth/sync-user", {
+            const response = await fetch("/api/auth/sync-user", {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${session.access_token}`,
@@ -258,9 +431,47 @@
                 credentials: "same-origin",
                 cache: "no-store",
             });
+            if (!response.ok) return null;
+            const payload = await response.json();
+            return payload && payload.user ? payload.user : null;
         } catch (_) {
-            // Keep auth UI resilient even if sync endpoint is unavailable.
+            return null;
         }
+    }
+
+    async function fetchProfileFromBackend(session) {
+        if (!session || !session.access_token) return null;
+        try {
+            const response = await fetch("/api/auth/profile", {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                credentials: "same-origin",
+                cache: "no-store",
+            });
+            if (!response.ok) return null;
+            const payload = await response.json();
+            return payload && payload.profile ? payload.profile : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function applyProfileData(profile) {
+        if (!profile) return;
+        state.profile = {
+            user_id: profile.user_id || (state.currentUser ? state.currentUser.id : ""),
+            email: profile.email || (state.currentUser ? state.currentUser.email : ""),
+            full_name: profile.full_name || profile.name || "",
+            avatar_url: profile.avatar_url || "",
+        };
+        if (state.currentUser) {
+            state.currentUser.name = state.profile.full_name || state.currentUser.name || "";
+            state.currentUser.avatar_url = state.profile.avatar_url || state.currentUser.avatar_url || "";
+        }
+        updateAuthUi();
+        publishAuthState();
     }
 
     function redirectToPendingWorkspaceIfNeeded() {
@@ -278,14 +489,12 @@
         }
     }
 
-    function getAuthProvider(session) {
-        if (!session || !session.user || !session.user.app_metadata) return "";
-        return String(session.user.app_metadata.provider || "").toLowerCase();
-    }
-
     async function applySession(session) {
         currentSession = session || null;
         state.currentUser = extractCurrentUser(currentSession);
+        if (!state.currentUser) {
+            state.profile = null;
+        }
 
         if (currentSession && currentSession.access_token) {
             setAuthCookie(currentSession.access_token);
@@ -298,7 +507,12 @@
 
         if (state.currentUser) {
             closeAuthModal();
-            await syncUserWithBackend(currentSession);
+            const syncUser = await syncUserWithBackend(currentSession);
+            if (syncUser) applyProfileData(syncUser);
+
+            const profile = await fetchProfileFromBackend(currentSession);
+            if (profile) applyProfileData(profile);
+
             const provider = getAuthProvider(currentSession);
             if (provider === "google") {
                 persistPendingMode(null);
@@ -356,9 +570,7 @@
     }
 
     async function submitEmailAuth(event) {
-        if (event && typeof event.preventDefault === "function") {
-            event.preventDefault();
-        }
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
         if (!supabaseClient) {
             setAuthMessage("Authentication is not configured.");
             return false;
@@ -369,10 +581,7 @@
         const nameInput = document.getElementById("auth-name");
         const emailInput = document.getElementById("auth-email");
         const passwordInput = document.getElementById("auth-password");
-
-        if (!emailInput || !passwordInput) {
-            return false;
-        }
+        if (!emailInput || !passwordInput) return false;
 
         const email = emailInput.value.trim();
         const password = passwordInput.value;
@@ -428,7 +637,117 @@
         }
     }
 
+    async function uploadAvatarAndGetPublicUrl(file) {
+        if (!state.currentUser || !state.currentUser.id) throw new Error("No authenticated user.");
+        if (!file) return "";
+        if (!file.type || !file.type.startsWith("image/")) {
+            throw new Error("Only image files are allowed for profile pictures.");
+        }
+        if (file.size > MAX_AVATAR_BYTES) {
+            throw new Error("Profile image is too large. Maximum size is 5MB.");
+        }
+
+        if (!currentSession || !currentSession.access_token) {
+            throw new Error("Session not available.");
+        }
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/auth/profile/avatar", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${currentSession.access_token}`,
+            },
+            body: formData,
+            credentials: "same-origin",
+            cache: "no-store",
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            const normalized = String(text || "").toLowerCase();
+            if (normalized.includes("bucket") && normalized.includes("not found")) {
+                throw new Error("Profile storage bucket 'avatars' was not found. Please run storage setup and try again.");
+            }
+            if (normalized.includes("policy") || normalized.includes("row-level") || normalized.includes("permission")) {
+                throw new Error("Upload blocked by storage policy. Please verify avatar storage policies.");
+            }
+            throw new Error(text || "Failed to upload profile image.");
+        }
+        const payload = await response.json();
+        const avatarUrl = payload && payload.avatar_url ? payload.avatar_url : (payload && payload.profile ? payload.profile.avatar_url : "");
+        if (!avatarUrl) {
+            throw new Error("Avatar upload succeeded but public URL is missing.");
+        }
+        return avatarUrl;
+    }
+
+    async function updateProfileOnBackend(fullName, avatarUrl) {
+        if (!currentSession || !currentSession.access_token) {
+            throw new Error("Session not available.");
+        }
+        const response = await fetch("/api/auth/profile", {
+            method: "PUT",
+            headers: {
+                Authorization: `Bearer ${currentSession.access_token}`,
+                "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+            cache: "no-store",
+            body: JSON.stringify({
+                full_name: fullName,
+                avatar_url: avatarUrl,
+            }),
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || "Failed to update profile.");
+        }
+        const payload = await response.json();
+        return payload && payload.profile ? payload.profile : null;
+    }
+
+    async function submitProfileForm(event) {
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+        if (!state.currentUser) return false;
+
+        const nameInput = document.getElementById("profile-full-name");
+        const fileInput = document.getElementById("profile-avatar-file");
+        const nextName = nameInput ? nameInput.value.trim() : "";
+        const selectedFile = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+        let nextAvatarUrl = getAvatarUrl();
+
+        setProfileMessage("");
+        setProfileLoading(true);
+        try {
+            if (selectedFile) {
+                nextAvatarUrl = await uploadAvatarAndGetPublicUrl(selectedFile);
+            }
+            const profile = await updateProfileOnBackend(nextName, nextAvatarUrl);
+            if (profile) {
+                applyProfileData(profile);
+            }
+
+            if (supabaseClient) {
+                await supabaseClient.auth.updateUser({
+                    data: {
+                        full_name: nextName,
+                        name: nextName,
+                        avatar_url: nextAvatarUrl,
+                    },
+                });
+            }
+
+            closeProfileModal();
+        } catch (error) {
+            setProfileMessage(error && error.message ? error.message : "Failed to update profile.");
+        } finally {
+            setProfileLoading(false);
+        }
+        return false;
+    }
+
     async function logout() {
+        closeProfileDropdown();
         if (supabaseClient) {
             await supabaseClient.auth.signOut();
         } else {
@@ -438,6 +757,41 @@
         if (window.location.pathname !== "/") {
             window.location.assign("/");
         }
+    }
+
+    function bindProfileUi() {
+        if (profileUiBound) return;
+        profileUiBound = true;
+
+        document.addEventListener("click", (event) => {
+            const target = event.target;
+            const toggleBtn = target.closest ? target.closest('[data-profile-toggle="true"]') : null;
+            if (toggleBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleProfileDropdown(toggleBtn);
+                return;
+            }
+
+            const editBtn = target.closest ? target.closest('[data-profile-edit="true"]') : null;
+            if (editBtn) {
+                event.preventDefault();
+                openProfileModal();
+                return;
+            }
+
+            const logoutBtn = target.closest ? target.closest('[data-profile-logout="true"]') : null;
+            if (logoutBtn) {
+                event.preventDefault();
+                void logout();
+                return;
+            }
+
+            const insideMenu = target.closest ? target.closest(".profile-menu") : null;
+            if (!insideMenu) {
+                closeProfileDropdown();
+            }
+        });
     }
 
     function bindAuthUi() {
@@ -450,20 +804,13 @@
         document.querySelectorAll('[data-auth-open="signup"]').forEach((btn) => {
             btn.addEventListener("click", () => openAuthModal("signup"));
         });
-
-        const logoutBtn = document.getElementById("auth-logout-btn");
-        if (logoutBtn) {
-            logoutBtn.addEventListener("click", () => {
-                void logout();
-            });
-        }
     }
 
     async function bootstrapAuth() {
         state.pendingMode = readPendingMode();
         publishAuthState();
-        supabaseClient = window.getSupabaseClient ? window.getSupabaseClient() : null;
 
+        supabaseClient = window.getSupabaseClient ? window.getSupabaseClient() : null;
         if (!supabaseClient) {
             updateAuthUi();
             setAuthReady();
@@ -490,9 +837,7 @@
         }
         if (window.getActiveAnalysisId) {
             const analysisId = window.getActiveAnalysisId();
-            if (analysisId) {
-                headers["X-Hatchup-Analysis-Id"] = analysisId;
-            }
+            if (analysisId) headers["X-Hatchup-Analysis-Id"] = analysisId;
         }
         return headers;
     };
@@ -506,7 +851,12 @@
     };
 
     window.getCurrentHatchupUser = function () {
-        return state.currentUser ? { ...state.currentUser } : null;
+        if (!state.currentUser) return null;
+        return {
+            ...state.currentUser,
+            full_name: state.profile && state.profile.full_name ? state.profile.full_name : state.currentUser.name,
+            avatar_url: getAvatarUrl(),
+        };
     };
 
     window.setPendingAuthMode = function (mode) {
@@ -521,6 +871,8 @@
 
     window.openAuthModal = openAuthModal;
     window.closeAuthModal = closeAuthModal;
+    window.openProfileModal = openProfileModal;
+    window.closeProfileModal = closeProfileModal;
     window.submitEmailAuth = submitEmailAuth;
     window.loginWithGoogle = loginWithGoogle;
     window.logoutHatchup = logout;
@@ -532,12 +884,18 @@
     };
 
     if (document.readyState === "loading") {
-        window.addEventListener("DOMContentLoaded", bindAuthUi);
+        window.addEventListener("DOMContentLoaded", () => {
+            bindAuthUi();
+            bindProfileUi();
+        });
     } else {
         bindAuthUi();
+        bindProfileUi();
     }
 
     void bootstrapAuth().catch(() => {
         setAuthReady();
     });
 })();
+
+
