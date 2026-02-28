@@ -15,7 +15,7 @@
             anonKey: "{{ supabase_anon_key | default('', true) | e }}"
         };
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260228b">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260228c">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -89,21 +89,23 @@
         </aside>
 
         <main class="main-content">
-            <div class="workspace-auth-nav" data-auth="logged-in" style="display: none;">
-                <div class="profile-menu">
-                    <button class="profile-menu-btn" data-profile-toggle="true" type="button" aria-label="Open profile menu" aria-expanded="false">
-                        <span class="profile-avatar" data-profile-avatar="true">
-                            U
-                        </span>
-                        <span class="profile-caret" aria-hidden="true"></span>
-                    </button>
-                    <div class="profile-dropdown" data-profile-dropdown="true" hidden>
-                        <div class="profile-dropdown-head">
-                            <p class="profile-name" data-profile-name="true"></p>
-                            <p class="profile-email" data-profile-email="true"></p>
+            <div class="workspace-topbar">
+                <div class="workspace-auth-nav" data-auth="logged-in" style="display: none;">
+                    <div class="profile-menu">
+                        <button class="profile-menu-btn" data-profile-toggle="true" type="button" aria-label="Open profile menu" aria-expanded="false">
+                            <span class="profile-avatar" data-profile-avatar="true">
+                                U
+                            </span>
+                            <span class="profile-caret" aria-hidden="true"></span>
+                        </button>
+                        <div class="profile-dropdown" data-profile-dropdown="true" hidden>
+                            <div class="profile-dropdown-head">
+                                <p class="profile-name" data-profile-name="true"></p>
+                                <p class="profile-email" data-profile-email="true"></p>
+                            </div>
+                            <button class="profile-dropdown-item" data-profile-edit="true" type="button">Edit Profile</button>
+                            <button class="profile-dropdown-item danger" data-profile-logout="true" type="button">Logout</button>
                         </div>
-                        <button class="profile-dropdown-item" data-profile-edit="true" type="button">Edit Profile</button>
-                        <button class="profile-dropdown-item danger" data-profile-logout="true" type="button">Logout</button>
                     </div>
                 </div>
             </div>

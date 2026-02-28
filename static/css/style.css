@@ -884,16 +884,26 @@ img.logo-img {
 /* Main Content */
 .main-content {
     flex: 1;
-    padding: 40px;
+    padding: 30px 40px 40px;
     overflow-y: auto;
 }
 
+.workspace-topbar {
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 2px 2px 6px;
+    box-sizing: border-box;
+    margin-bottom: 26px;
+}
+
 .workspace-auth-nav {
-    margin: 0 0 12px auto;
+    margin: 0;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    float: right;
     position: relative;
 }
 
@@ -1053,11 +1063,12 @@ img.logo-img {
 }
 
 .content-header {
-    margin-bottom: 30px;
+    margin: 4px 0 32px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: 18px;
+    padding-right: 2px;
 }
 
 .content-header-copy h1 {
@@ -1083,6 +1094,25 @@ img.logo-img {
     margin-left: auto;
     display: flex;
     align-items: center;
+}
+
+.btn-primary-action {
+    border: 1px solid #111827;
+    background: #111827;
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px 16px;
+    min-height: 40px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.btn-primary-action:hover {
+    background: #1f2937;
+    border-color: #1f2937;
+    transform: translateY(-1px);
 }
 
 /* Upload Container */
@@ -1555,6 +1585,12 @@ img.logo-img {
 
     .main-content {
         padding: 20px;
+    }
+
+    .workspace-topbar {
+        margin-bottom: 24px;
+        min-height: 48px;
+        padding: 0 0 4px;
     }
 
     .grid-2 {
