@@ -13,7 +13,7 @@
             anonKey: "{{ supabase_anon_key | default('', true) | e }}"
         };
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260228b">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260228d">
 </head>
 
 <body class="home-body">
@@ -190,8 +190,21 @@
         </div>
     </template>
 
+    <template id="logout-confirm-modal-template">
+        <div id="logout-confirm-modal" class="auth-modal confirm-logout-modal">
+            <div class="auth-modal-card confirm-logout-card">
+                <h2>Confirm Logout</h2>
+                <p>Are you sure you want to log out of your HatchUp account?</p>
+                <div class="confirm-logout-actions">
+                    <button type="button" class="btn-confirm-cancel" data-logout-cancel="true">Cancel</button>
+                    <button type="button" class="btn-confirm-logout" data-logout-confirm="true">Logout</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <script src="/static/js/supabaseClient.js?v=20260228a"></script>
-    <script src="/static/js/session.js?v=20260228b"></script>
+    <script src="/static/js/session.js?v=20260228d"></script>
     <script src="/static/js/mode_state.js?v=20260224c"></script>
     <script src="/static/js/home.js?v=20260228a"></script>
 </body>

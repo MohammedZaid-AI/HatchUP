@@ -15,7 +15,7 @@
             anonKey: "{{ supabase_anon_key | default('', true) | e }}"
         };
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260228c">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260228d">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -143,7 +143,7 @@
     </div>
 
     <script src="/static/js/supabaseClient.js?v=20260228a"></script>
-    <script src="/static/js/session.js?v=20260228b"></script>
+    <script src="/static/js/session.js?v=20260228d"></script>
     <script src="/static/js/mode_state.js?v=20260224c"></script>
     <script src="/static/js/analysis_manager.js?v=20260224c"></script>
     <script src="/static/js/main.js?v=20260224c"></script>
@@ -168,6 +168,19 @@
                     <button id="profile-save-btn" class="home-auth-btn auth-submit-btn" type="submit">Save Changes</button>
                 </form>
                 <p id="profile-error" class="auth-error"></p>
+            </div>
+        </div>
+    </template>
+
+    <template id="logout-confirm-modal-template">
+        <div id="logout-confirm-modal" class="auth-modal confirm-logout-modal">
+            <div class="auth-modal-card confirm-logout-card">
+                <h2>Confirm Logout</h2>
+                <p>Are you sure you want to log out of your HatchUp account?</p>
+                <div class="confirm-logout-actions">
+                    <button type="button" class="btn-confirm-cancel" data-logout-cancel="true">Cancel</button>
+                    <button type="button" class="btn-confirm-logout" data-logout-confirm="true">Logout</button>
+                </div>
             </div>
         </div>
     </template>

@@ -17,6 +17,7 @@
     let supabaseClient = null;
     let authUiBound = false;
     let profileUiBound = false;
+    let logoutConfirmInProgress = false;
     let authReadyResolve;
     const authReady = new Promise((resolve) => {
         authReadyResolve = resolve;
@@ -157,6 +158,7 @@
         if (!isAuthenticated) {
             closeProfileDropdown();
             closeProfileModal();
+            closeLogoutConfirmModal();
         }
     }
 
@@ -388,6 +390,75 @@
         modal.style.display = "none";
         setProfileLoading(false);
         setProfileMessage("");
+    }
+
+    function getLogoutConfirmModalElement() {
+        return document.getElementById("logout-confirm-modal");
+    }
+
+    function setLogoutConfirmLoading(loading) {
+        const confirmBtn = document.querySelector('[data-logout-confirm="true"]');
+        const cancelBtn = document.querySelector('[data-logout-cancel="true"]');
+        if (confirmBtn) confirmBtn.disabled = !!loading;
+        if (cancelBtn) cancelBtn.disabled = !!loading;
+    }
+
+    function bindLogoutConfirmModalUi(modal) {
+        if (!modal || modal.dataset.bound === "true") return;
+        modal.dataset.bound = "true";
+
+        const cancelBtn = modal.querySelector('[data-logout-cancel="true"]');
+        if (cancelBtn) {
+            cancelBtn.addEventListener("click", () => {
+                closeLogoutConfirmModal();
+            });
+        }
+
+        const confirmBtn = modal.querySelector('[data-logout-confirm="true"]');
+        if (confirmBtn) {
+            confirmBtn.addEventListener("click", () => {
+                void logout();
+            });
+        }
+
+        modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+                closeLogoutConfirmModal();
+            }
+        });
+    }
+
+    function ensureLogoutConfirmModalRendered() {
+        let modal = getLogoutConfirmModalElement();
+        if (modal) {
+            bindLogoutConfirmModalUi(modal);
+            return modal;
+        }
+        const template = document.getElementById("logout-confirm-modal-template");
+        if (!template || !template.content) return null;
+        const fragment = template.content.cloneNode(true);
+        document.body.appendChild(fragment);
+        modal = getLogoutConfirmModalElement();
+        bindLogoutConfirmModalUi(modal);
+        return modal;
+    }
+
+    function openLogoutConfirmModal() {
+        if (!state.currentUser) return;
+        const modal = ensureLogoutConfirmModalRendered();
+        if (!modal) return;
+        closeProfileDropdown();
+        setLogoutConfirmLoading(false);
+        modal.hidden = false;
+        modal.style.display = "flex";
+    }
+
+    function closeLogoutConfirmModal() {
+        const modal = getLogoutConfirmModalElement();
+        if (!modal) return;
+        modal.hidden = true;
+        modal.style.display = "none";
+        setLogoutConfirmLoading(false);
     }
 
     function closeProfileDropdown() {
@@ -747,15 +818,51 @@
     }
 
     async function logout() {
+        if (logoutConfirmInProgress) return;
+        logoutConfirmInProgress = true;
         closeProfileDropdown();
-        if (supabaseClient) {
-            await supabaseClient.auth.signOut();
-        } else {
+        setLogoutConfirmLoading(true);
+        try {
+            if (supabaseClient) {
+                await supabaseClient.auth.signOut();
+            }
             await applySession(null);
+            resetWorkspaceState();
+            persistPendingMode(null);
+            closeLogoutConfirmModal();
+            if (window.location.pathname !== "/") {
+                window.location.assign("/");
+            }
+        } finally {
+            logoutConfirmInProgress = false;
+            setLogoutConfirmLoading(false);
         }
-        persistPendingMode(null);
-        if (window.location.pathname !== "/") {
-            window.location.assign("/");
+    }
+
+    function resetWorkspaceState() {
+        const keys = [
+            "hatchup_workspace_cache",
+            "hatchup_analysis",
+            "hatchup_deep_research_history",
+            "hatchup_pending_mode",
+            "hatchup_mode_session",
+            "hatchup_mode",
+            "mode",
+        ];
+        keys.forEach((key) => {
+            try {
+                localStorage.removeItem(key);
+            } catch (_) {
+                // Ignore storage errors.
+            }
+            try {
+                sessionStorage.removeItem(key);
+            } catch (_) {
+                // Ignore storage errors.
+            }
+        });
+        if (window.HatchupAppState && window.HatchupAppState.setMode) {
+            window.HatchupAppState.setMode("vc");
         }
     }
 
@@ -783,7 +890,7 @@
             const logoutBtn = target.closest ? target.closest('[data-profile-logout="true"]') : null;
             if (logoutBtn) {
                 event.preventDefault();
-                void logout();
+                openLogoutConfirmModal();
                 return;
             }
 
