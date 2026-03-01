@@ -7,15 +7,19 @@ from dotenv import load_dotenv
 mcp = FastMCP("Tavily Search MCP")
 
 load_dotenv()
-api_key =os.environ["TAVILY_API_KEY"]=os.getenv("TAVILY_API_KEY")
+api_key = os.getenv("TAVILY_API_KEY")
+tavily_client = TavilySearch(api_key=api_key) if api_key else None
 
-tavily = TavilySearch(api_key=api_key)
 
 @mcp.tool()
 def tavily(query: str):
-    cleaned_query = query.replace("tavily:", "").strip()  # Remove the prefix if present
-    results = tavily.run(cleaned_query)
-    return results
+    if not tavily_client:
+        return {"error": "TAVILY_API_KEY is not configured."}
+    cleaned_query = (query or "").replace("tavily:", "").strip()
+    if not cleaned_query:
+        return {"error": "Query is empty."}
+    return tavily_client.run(cleaned_query)
+
 
 if __name__ == "__main__":
     print("Running Tavily Search MCP...", file=sys.stderr)

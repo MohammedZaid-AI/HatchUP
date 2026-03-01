@@ -23,6 +23,12 @@
       "args": [
         "D:\\Zaids Work\\HatchUP\\mcp_medium\\server.py"
       ]
+    },
+    "@tavily/mcp-server": {
+      "command": "D:\\Zaids Work\\HatchUPVC Updated\\venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Zaids Work\\HatchUP\\mcp_tavily\\server.py"
+      ]
     }
   }
 }
