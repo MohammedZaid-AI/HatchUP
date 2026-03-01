@@ -154,7 +154,8 @@ async def get_mcp_sessions():
         "reddit": base_dir / "mcp_reddit" / "server.py",
         "wiki": base_dir / "mcp_wiki" / "server.py",
         "google": base_dir / "mcp_google" / "server.py",
-        "medium": base_dir / "mcp_medium" / "server.py"
+        "medium": base_dir / "mcp_medium" / "server.py",
+        "tavily": base_dir / "mcp_tavily" / "server.py"
     }
     
     # Validate existence
@@ -179,6 +180,10 @@ async def get_mcp_sessions():
             "@echolab/mcp-medium": {
                 "command": sys.executable,
                 "args": [str(mcp_dirs["medium"])]
+            },
+            "@tavily/mcp-server": {
+                "command": sys.executable,
+                "args": [str(mcp_dirs["tavily"])]
             }
         }
     }
@@ -237,6 +242,13 @@ async def run_searches(query: str, sessions):
     except Exception as e:
         results["medium"] = fail("Medium", e)
 
+    # 5. Tavily
+    try:    
+        results["tavily"] = await sessions["@tavily/mcp-server"].call_tool(
+            "main", {"query": query}
+        )
+    except Exception as e:
+        results["tavily"] = fail("Tavily", e)
     return results
 
 def build_context_string(results: dict) -> str:
@@ -250,6 +262,7 @@ def build_context_string(results: dict) -> str:
     [Wikipedia]: {truncate(results.get("wiki"))}
     [Google]: {truncate(results.get("google"))}
     [Medium]: {truncate(results.get("medium"))}
+    [Tavily]: {truncate(results.get("tavily"))}
     ----------------------
     """
 

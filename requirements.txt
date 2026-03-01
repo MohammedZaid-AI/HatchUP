@@ -25,3 +25,4 @@ transformers
 mcp-use
 supabase
 psycopg[binary]
+langchain-tavily
