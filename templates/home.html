@@ -13,7 +13,7 @@
             anonKey: "{{ supabase_anon_key | default('', true) | e }}"
         };
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260228d">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260228e">
 </head>
 
 <body class="home-body">
@@ -47,9 +47,9 @@
     <main class="home-shell">
         <section class="hero">
             <p class="eyebrow">For Startup Builders and Startup Backers</p>
-            <h1>Understand startups before you decide.</h1>
+            <h1>Where startups are built and evaluated.</h1>
             <p class="subtext">
-                Analyze pitch decks, run deeper research, and create clear memos - all in one place.
+                From idea to investment all in one AI workspace.
             </p>
             <div class="hero-actions">
                 <button class="home-btn" onclick="enterWorkspace('vc')">For Startup Backers</button>
@@ -149,7 +149,17 @@
                     <button id="auth-mode-login" class="auth-mode-btn active" data-auth-switch="login" type="button">Login</button>
                     <button id="auth-mode-signup" class="auth-mode-btn" data-auth-switch="signup" type="button">Sign Up</button>
                 </div>
-                <button id="auth-google-btn" class="home-auth-btn auth-google-btn" type="button">Continue with Google</button>
+                <button id="auth-google-btn" class="home-auth-btn auth-google-btn" type="button">
+                    <span class="google-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+                            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.3 18.9 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.6 8.3 6.3 14.7z"/>
+                            <path fill="#4CAF50" d="M24 44c5.1 0 9.8-1.9 13.4-5.1l-6.2-5.2C29.2 35.2 26.7 36 24 36c-5.2 0-9.6-3.3-11.2-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z"/>
+                            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1 2.8-3 5.1-5.9 6.7l6.2 5.2C39.6 36.2 44 30.6 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+                        </svg>
+                    </span>
+                    <span class="google-btn-label">Continue with Google</span>
+                </button>
                 <div class="auth-divider"><span>or</span></div>
                 <form id="auth-form">
                     <div id="auth-name-row" style="display: none;">
