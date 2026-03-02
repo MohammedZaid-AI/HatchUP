@@ -288,6 +288,97 @@ body.mode-loading .mode-loader {
     color: #059669;
 }
 
+.mobile-desktop-notice {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    background: rgba(15, 23, 42, 0.3);
+    backdrop-filter: blur(4px);
+    z-index: 60;
+}
+
+.mobile-desktop-notice.is-hidden {
+    display: none;
+}
+
+.mobile-desktop-notice-card {
+    width: 100%;
+    max-width: 520px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+    padding: 22px;
+}
+
+.mobile-desktop-notice-kicker {
+    margin: 0 0 10px;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.mobile-desktop-notice-card h2 {
+    margin: 0;
+    color: #0f172a;
+    font-size: clamp(1.25rem, 4.5vw, 1.5rem);
+}
+
+.mobile-desktop-notice-copy {
+    margin: 10px 0 0;
+    color: #475569;
+    line-height: 1.62;
+    font-size: 0.94rem;
+}
+
+.mobile-desktop-notice-actions {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mobile-desktop-notice-btn {
+    border-radius: 9px;
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.mobile-desktop-notice-btn.secondary {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #1e293b;
+}
+
+.mobile-desktop-notice-btn.secondary:hover {
+    background: #f8fafc;
+}
+
+.mobile-desktop-notice-btn.ghost {
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.mobile-desktop-notice-btn.ghost:hover {
+    background: #f1f5f9;
+}
+
 .home-logo {
     width: 72px;
     height: 72px;
@@ -1663,6 +1754,18 @@ img.logo-img {
 
     .legal-card {
         padding: 20px 16px;
+    }
+
+    .mobile-desktop-notice {
+        padding: 14px;
+    }
+
+    .mobile-desktop-notice-card {
+        padding: 18px 16px;
+    }
+
+    .mobile-desktop-notice-actions {
+        margin-top: 16px;
     }
 }
 
