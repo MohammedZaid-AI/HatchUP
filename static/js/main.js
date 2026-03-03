@@ -111,17 +111,31 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (!switchInput) return;
 
-    switchInput.addEventListener('change', () => {
-        const selectedMode = switchInput.checked ? 'founder' : 'vc';
+    let switchFrameId = null;
+    let pendingMode = null;
+
+    function applySelectedMode(selectedMode) {
         if (selectedMode === currentMode) {
             return;
         }
         currentMode = selectedMode;
-
         if (modeState && modeState.setMode) {
             modeState.setMode(selectedMode);
         } else {
             applyModeUi(selectedMode);
         }
+    }
+
+    switchInput.addEventListener('change', () => {
+        pendingMode = switchInput.checked ? 'founder' : 'vc';
+        if (switchFrameId !== null) {
+            return;
+        }
+        switchFrameId = window.requestAnimationFrame(() => {
+            const nextMode = pendingMode;
+            pendingMode = null;
+            switchFrameId = null;
+            applySelectedMode(nextMode);
+        });
     });
 });
