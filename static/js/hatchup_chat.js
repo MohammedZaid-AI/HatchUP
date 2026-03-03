@@ -1,114 +1,183 @@
-const messagesDiv = document.getElementById('chat-messages');
-const input = document.getElementById('chat-input');
-let chatHistory = []; // {role: str, content: str}
+const messagesDiv = document.getElementById("chat-messages");
+const input = document.getElementById("chat-input");
 
-const STORAGE_KEY = 'hatchup_chat_history';
+let chatHistory = [];
+let currentChatId = "";
+let activeUserId = "";
+let isSending = false;
 
-// Initialize from History
-window.addEventListener('DOMContentLoaded', () => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-        try {
-            const hist = JSON.parse(saved);
-            if (hist && hist.length > 0) {
-                // Clear default message only if we have history
-                // Wait, default message is in HTML.
-                messagesDiv.innerHTML = "";
-                chatHistory = [];
+const DEFAULT_ASSISTANT_TEXT = "Hi! I am HatchUp Chat. Ask about markets, trends, or startups and I will pull live context.";
 
-                hist.forEach(msg => {
-                    appendMessage(msg.role, msg.content, false, false);
-                });
-            }
-        } catch (e) { console.error("Error parsing history", e); }
-    }
-});
-
-// Expose askQuery for chips
-window.askQuery = function (q) {
-    input.value = q;
-    sendMessage();
+function buildHeaders() {
+    return {
+        "Content-Type": "application/json",
+        ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {}),
+    };
 }
 
-window.sendMessage = async function () {
-    const text = input.value.trim();
-    if (!text) return;
+function getCurrentUserId() {
+    if (!window.getCurrentHatchupUser) return "";
+    const user = window.getCurrentHatchupUser();
+    return user && user.id ? String(user.id) : "";
+}
 
-    // UI: Add User Message
+function renderDefaultAssistantMessage() {
+    if (!messagesDiv) return;
+    messagesDiv.innerHTML = "";
+    appendMessage("assistant", DEFAULT_ASSISTANT_TEXT, true);
+}
+
+function clearLocalChatState() {
+    chatHistory = [];
+    currentChatId = "";
+    renderDefaultAssistantMessage();
+}
+
+function setComposerEnabled(enabled) {
+    if (input) input.disabled = !enabled;
+    document.querySelectorAll(".chat-input-area button").forEach((btn) => {
+        btn.disabled = !enabled;
+    });
+}
+
+async function loadServerHistory(chatId) {
+    if (!messagesDiv) return;
+    const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : "";
+    const res = await fetch(`/api/chat/hatchup/history${query}`, {
+        method: "GET",
+        headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {},
+        credentials: "same-origin",
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    currentChatId = data && data.chat_id ? String(data.chat_id) : "";
+    if (data && data.storage_warning) {
+        console.warn(data.storage_warning);
+    }
+    const messages = Array.isArray(data && data.messages) ? data.messages : [];
+
+    messagesDiv.innerHTML = "";
+    chatHistory = [];
+    if (!messages.length) {
+        renderDefaultAssistantMessage();
+        return;
+    }
+    messages.forEach((msg) => {
+        appendMessage(msg.role, msg.content, false);
+    });
+}
+
+async function bootstrapChatForCurrentUser() {
+    if (!window.waitForAuthReady) return;
+    await window.waitForAuthReady();
+    const nextUserId = getCurrentUserId();
+    if (!nextUserId) {
+        activeUserId = "";
+        clearLocalChatState();
+        setComposerEnabled(false);
+        return;
+    }
+    if (activeUserId === nextUserId && currentChatId) return;
+    activeUserId = nextUserId;
+    setComposerEnabled(true);
+    await loadServerHistory();
+}
+
+window.askQuery = function (q) {
+    if (!input) return;
+    input.value = q;
+    void window.sendMessage();
+};
+
+window.sendMessage = async function () {
+    if (isSending) return;
+    const text = input ? input.value.trim() : "";
+    if (!text) return;
+    if (!activeUserId) return;
+
+    isSending = true;
+    setComposerEnabled(false);
     input.value = "";
     appendMessage("user", text);
-
-    // UI: Add Thinking
     const thinkingId = appendMessage("assistant", "Thinking (Checking Live Tools)...", true);
 
     try {
         const payload = {
-            messages: chatHistory, // Includes the new user message
-            query: text
+            chat_id: currentChatId || null,
+            messages: chatHistory,
+            query: text,
         };
-
-        const res = await fetch('/api/chat/hatchup', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {})
-            },
-            body: JSON.stringify(payload)
+        const res = await fetch("/api/chat/hatchup", {
+            method: "POST",
+            headers: buildHeaders(),
+            body: JSON.stringify(payload),
         });
-
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
+        if (data && data.chat_id) {
+            currentChatId = String(data.chat_id);
+        }
+        if (data && data.storage_warning) {
+            console.warn(data.storage_warning);
+        }
 
-        // Remove thinking
         const thinkingEl = document.getElementById(thinkingId);
         if (thinkingEl) thinkingEl.remove();
-
-        // Add Actual Response
         appendMessage("assistant", data.response);
-
     } catch (err) {
         const thinkingEl = document.getElementById(thinkingId);
         if (thinkingEl) {
             thinkingEl.innerText = "Error: " + err.message;
-            thinkingEl.style.color = 'red';
+            thinkingEl.style.color = "red";
         }
+    } finally {
+        isSending = false;
+        setComposerEnabled(true);
     }
-}
+};
 
-// Function to clear chat
 window.clearChat = function () {
-    if (confirm("Clear chat history?")) {
-        localStorage.removeItem(STORAGE_KEY);
-        location.reload();
-    }
-}
+    if (!confirm("Start a new chat session?")) return;
+    chatHistory = [];
+    currentChatId = crypto.randomUUID();
+    renderDefaultAssistantMessage();
+};
 
-/**
- * Appends message to UI and History
- * @param {string} role 'user' or 'assistant'
- * @param {string} content 
- * @param {boolean} isTemporary If true, does not save to history
- * @param {boolean} saveToStorage If true (default), updates localStorage
- */
-function appendMessage(role, content, isTemporary = false, saveToStorage = true) {
-    const div = document.createElement('div');
+function appendMessage(role, content, isTemporary = false) {
+    const div = document.createElement("div");
     div.className = `message msg-${role}`;
-
-    // Use Marked
-    div.innerHTML = marked.parse(content);
-
+    div.innerHTML = marked.parse(content || "");
     const id = `msg-${Date.now()}-${Math.random()}`;
     div.id = id;
-
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
     if (!isTemporary) {
         chatHistory.push({ role, content });
-
-        if (saveToStorage) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory));
-        }
     }
     return id;
 }
+
+window.addEventListener("hatchup:authchange", (event) => {
+    const detail = event && event.detail ? event.detail : {};
+    const currentUser = detail.currentUser || null;
+    const nextUserId = currentUser && currentUser.id ? String(currentUser.id) : "";
+    if (!nextUserId) {
+        activeUserId = "";
+        clearLocalChatState();
+        setComposerEnabled(false);
+        return;
+    }
+    if (nextUserId !== activeUserId) {
+        activeUserId = nextUserId;
+        void loadServerHistory();
+    }
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+    renderDefaultAssistantMessage();
+    setComposerEnabled(false);
+    void bootstrapChatForCurrentUser().catch((error) => {
+        console.error("Failed to bootstrap chat history", error);
+    });
+});

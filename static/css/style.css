@@ -208,6 +208,14 @@ body.mode-loading .mode-loader {
     width: 100%;
 }
 
+.auth-submit-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
 .auth-google-btn {
     background: #ffffff;
     color: #0f172a;
@@ -240,6 +248,29 @@ body.mode-loading .mode-loader {
     font-size: 1.03rem;
     font-weight: 650;
     letter-spacing: -0.01em;
+}
+
+.auth-submit-btn:disabled,
+.auth-google-btn:disabled,
+.auth-mode-btn:disabled,
+.auth-close:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.auth-submit-btn.is-processing::before,
+.auth-google-btn.is-processing::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: auth-btn-spin 0.7s linear infinite;
+}
+
+.auth-google-btn.is-processing .google-icon {
+    display: none;
 }
 
 .auth-modal-card form {
@@ -286,6 +317,12 @@ body.mode-loading .mode-loader {
 
 .auth-error.success {
     color: #059669;
+}
+
+@keyframes auth-btn-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .mobile-desktop-notice {

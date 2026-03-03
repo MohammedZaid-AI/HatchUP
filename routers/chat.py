@@ -9,9 +9,11 @@ import asyncio
 import logging
 import re
 import time
+import uuid
 from dotenv import load_dotenv
 from src.auth import require_user_id
 from src.services.analysis_service import AnalysisService
+from src.services.chat_service import ChatService
 from src.session import get_active_analysis_id, set_active_analysis_id
 
 from langchain_groq import ChatGroq
@@ -38,6 +40,11 @@ def get_authenticated_user_id(request: Request) -> str:
     return require_user_id(request)
 
 
+@lru_cache(maxsize=1)
+def get_chat_service() -> ChatService:
+    return ChatService()
+
+
 class Message(BaseModel):
     role: str
     content: str
@@ -52,10 +59,28 @@ class ResearchRequest(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[Message]
     query: str
+    chat_id: Optional[str] = None
 
 
 def _normalize_query(query: str) -> str:
     return re.sub(r"\s+", " ", (query or "").strip().lower())
+
+
+def _normalize_chat_id(value: Optional[str]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid chat_id") from exc
+
+
+def _error_text(exc: Exception) -> str:
+    text = str(exc or "").strip()
+    if not text:
+        return "Unknown server error."
+    return text[:300]
 
 
 def _should_run_live_search(query: str) -> bool:
@@ -251,10 +276,45 @@ def build_context_string(results: Dict[str, Any]) -> str:
     )
 
 
+@router.get("/api/chat/hatchup/history")
+async def get_hatchup_chat_history(request: Request, chat_id: Optional[str] = None):
+    try:
+        user_id = get_authenticated_user_id(request)
+        service = get_chat_service()
+        resolved_chat_id = _normalize_chat_id(chat_id)
+        if not resolved_chat_id:
+            latest_chat_id = service.get_latest_chat_id(user_id)
+            resolved_chat_id = latest_chat_id or service.create_chat_id()
+
+        messages = service.get_chat_messages(user_id=user_id, chat_id=resolved_chat_id)
+        return {
+            "chat_id": resolved_chat_id,
+            "messages": [
+                {
+                    "role": msg["role"],
+                    "content": msg["content"],
+                    "created_at": msg["created_at"],
+                }
+                for msg in messages
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("get_hatchup_chat_history failed")
+        return {
+            "chat_id": str(uuid.uuid4()),
+            "messages": [],
+            "storage_warning": f"Chat history storage unavailable: {_error_text(exc)}",
+        }
+
+
 @router.post("/api/chat/hatchup")
 async def hatchup_chat(payload: ChatRequest, request: Request):
     try:
-        get_authenticated_user_id(request)
+        user_id = get_authenticated_user_id(request)
+        service = get_chat_service()
+        resolved_chat_id = _normalize_chat_id(payload.chat_id) or service.create_chat_id()
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="Server is not configured for chat generation.")
@@ -310,9 +370,31 @@ Use clean executive memo style with short actionable bullets.
             question=payload.query,
         )
         response = await llm.ainvoke(messages)
-        return {"response": response.content, "sources": search_results, "used_live_tools": used_live_tools}
+        result = {
+            "chat_id": resolved_chat_id,
+            "response": response.content,
+            "sources": search_results,
+            "used_live_tools": used_live_tools,
+        }
+        try:
+            service.save_message(
+                user_id=user_id,
+                chat_id=resolved_chat_id,
+                role="user",
+                content=payload.query,
+            )
+            service.save_message(
+                user_id=user_id,
+                chat_id=resolved_chat_id,
+                role="assistant",
+                content=str(response.content or ""),
+            )
+        except Exception as save_exc:
+            logger.exception("chat message persistence failed")
+            result["storage_warning"] = f"Chat message was generated but not saved: {_error_text(save_exc)}"
+        return result
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("hatchup_chat failed")
-        raise HTTPException(status_code=500, detail="HatchUp Chat failed. Please try again.")
+        raise HTTPException(status_code=500, detail=f"HatchUp Chat failed. {_error_text(exc)}")

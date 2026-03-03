@@ -4,6 +4,7 @@
     const PENDING_MODE_KEY = "hatchup_pending_mode";
     const AVATAR_BUCKET = "avatars";
     const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+    const AUTH_LOADING_MIN_MS = 280;
 
     const state = {
         currentUser: null,
@@ -18,6 +19,8 @@
     let authUiBound = false;
     let profileUiBound = false;
     let logoutConfirmInProgress = false;
+    let authRequestInFlight = false;
+    let authLoadingSource = "";
     let authReadyResolve;
     const authReady = new Promise((resolve) => {
         authReadyResolve = resolve;
@@ -197,8 +200,44 @@
     function setAuthLoading(loading) {
         const submitBtn = document.getElementById("auth-submit-btn");
         const googleBtn = document.getElementById("auth-google-btn");
-        if (submitBtn) submitBtn.disabled = !!loading;
-        if (googleBtn) googleBtn.disabled = !!loading;
+        const closeBtn = document.querySelector("#auth-modal [data-auth-close='true']");
+        const modeSwitches = document.querySelectorAll("#auth-modal [data-auth-switch]");
+        const modal = getAuthModalElement();
+        const mode = modal && modal.dataset.mode === "signup" ? "signup" : "login";
+
+        authRequestInFlight = !!loading;
+        if (!loading) authLoadingSource = "";
+
+        if (submitBtn) {
+            submitBtn.disabled = !!loading;
+            submitBtn.classList.toggle("is-processing", !!loading && authLoadingSource === "email");
+            submitBtn.textContent = loading && authLoadingSource === "email" ? "Processing…" : (mode === "signup" ? "Sign Up" : "Login");
+            submitBtn.setAttribute("aria-busy", loading && authLoadingSource === "email" ? "true" : "false");
+        }
+        if (googleBtn) {
+            googleBtn.disabled = !!loading;
+            googleBtn.classList.toggle("is-processing", !!loading && authLoadingSource === "google");
+            googleBtn.setAttribute("aria-busy", loading && authLoadingSource === "google" ? "true" : "false");
+            const googleLabel = googleBtn.querySelector(".google-btn-label");
+            if (googleLabel) {
+                googleLabel.textContent = loading && authLoadingSource === "google" ? "Processing…" : "Continue with Google";
+            }
+        }
+        if (closeBtn) {
+            closeBtn.disabled = !!loading;
+        }
+        modeSwitches.forEach((btn) => {
+            btn.disabled = !!loading;
+        });
+    }
+
+    async function clearAuthLoadingWithMinimumDelay(startedAtMs) {
+        const elapsed = Date.now() - startedAtMs;
+        const waitMs = AUTH_LOADING_MIN_MS - elapsed;
+        if (waitMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+        setAuthLoading(false);
     }
 
     function getAuthModalElement() {
@@ -206,6 +245,7 @@
     }
 
     function applyAuthMode(mode) {
+        if (authRequestInFlight) return;
         const modal = getAuthModalElement();
         if (!modal) return;
 
@@ -283,26 +323,43 @@
         return modal;
     }
 
-    function setAuthModalOpen(isOpen) {
-        state.isAuthModalOpen = !!isOpen;
-        const modal = state.isAuthModalOpen ? ensureAuthModalRendered() : getAuthModalElement();
+    function shouldRenderAuthModal() {
+        return !state.currentUser && state.isAuthModalOpen;
+    }
+
+    function syncAuthModalVisibility() {
+        if (shouldRenderAuthModal()) {
+            const modal = ensureAuthModalRendered();
+            if (modal) {
+                modal.hidden = false;
+                modal.style.display = "flex";
+            }
+            return;
+        }
+        const modal = getAuthModalElement();
         if (modal) {
-            modal.hidden = !state.isAuthModalOpen;
-            modal.style.display = state.isAuthModalOpen ? "flex" : "none";
+            modal.remove();
         }
         if (!state.isAuthModalOpen) {
             setAuthLoading(false);
             setAuthMessage("");
         }
+    }
+
+    function setAuthModalOpen(isOpen) {
+        state.isAuthModalOpen = !!isOpen;
+        syncAuthModalVisibility();
         publishAuthState();
     }
 
     function openAuthModal(mode) {
+        if (state.currentUser) return;
         setAuthModalOpen(true);
         applyAuthMode(mode);
     }
 
     function closeAuthModal() {
+        if (authRequestInFlight) return;
         setAuthModalOpen(false);
     }
 
@@ -563,6 +620,9 @@
     async function applySession(session) {
         currentSession = session || null;
         state.currentUser = extractCurrentUser(currentSession);
+        if (state.currentUser) {
+            state.isAuthModalOpen = false;
+        }
         if (!state.currentUser) {
             state.profile = null;
         }
@@ -573,24 +633,21 @@
             clearAuthCookie();
         }
 
+        syncAuthModalVisibility();
         updateAuthUi();
         publishAuthState();
 
         if (state.currentUser) {
-            closeAuthModal();
             const syncUser = await syncUserWithBackend(currentSession);
             if (syncUser) applyProfileData(syncUser);
 
             const profile = await fetchProfileFromBackend(currentSession);
             if (profile) applyProfileData(profile);
 
-            const provider = getAuthProvider(currentSession);
-            if (provider === "google") {
-                persistPendingMode(null);
-                publishAuthState();
-                return;
-            }
-            redirectToPendingWorkspaceIfNeeded();
+            // Keep users on the current page after authentication.
+            // Workspace entry is handled explicitly via enterWorkspace().
+            persistPendingMode(null);
+            publishAuthState();
         }
     }
 
@@ -642,6 +699,7 @@
 
     async function submitEmailAuth(event) {
         if (event && typeof event.preventDefault === "function") event.preventDefault();
+        if (authRequestInFlight) return false;
         if (!supabaseClient) {
             setAuthMessage("Authentication is not configured.");
             return false;
@@ -657,8 +715,10 @@
         const email = emailInput.value.trim();
         const password = passwordInput.value;
         const name = nameInput ? nameInput.value.trim() : "";
+        const loadingStartedAt = Date.now();
 
         setAuthMessage("");
+        authLoadingSource = "email";
         setAuthLoading(true);
         try {
             if (mode === "signup") {
@@ -673,7 +733,7 @@
             if (mode === "login" && (normalized.includes("invalid login credentials") || normalized.includes("user not found"))) {
                 const exists = await checkAuthAccountExists(email);
                 if (exists === false) {
-                    setAuthMessage("Account not found. Please sign up.");
+                    setAuthMessage("Account not found. Please sign up or check your password or email.");
                 } else {
                     setAuthMessage("Invalid email or password.");
                 }
@@ -685,16 +745,22 @@
                 setAuthMessage(message);
             }
         } finally {
-            setAuthLoading(false);
+            await clearAuthLoadingWithMinimumDelay(loadingStartedAt);
         }
         return false;
     }
 
     async function loginWithGoogle() {
+        if (authRequestInFlight) return;
         if (!supabaseClient) return;
+        const loadingStartedAt = Date.now();
         setAuthMessage("");
+        authLoadingSource = "google";
         setAuthLoading(true);
         try {
+            await new Promise((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+            });
             const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: "google",
                 options: {
@@ -704,7 +770,7 @@
             if (error) throw error;
         } catch (error) {
             setAuthMessage(error && error.message ? error.message : "Google sign-in failed");
-            setAuthLoading(false);
+            await clearAuthLoadingWithMinimumDelay(loadingStartedAt);
         }
     }
 
@@ -844,6 +910,7 @@
             "hatchup_workspace_cache",
             "hatchup_analysis",
             "hatchup_deep_research_history",
+            "hatchup_chat_history",
             "hatchup_pending_mode",
             "hatchup_mode_session",
             "hatchup_mode",
@@ -1004,5 +1071,3 @@
         setAuthReady();
     });
 })();
-
-
