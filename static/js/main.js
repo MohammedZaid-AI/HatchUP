@@ -63,7 +63,18 @@ function applyModeUi(mode) {
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+let workspaceUiInitialized = false;
+let workspacePageInitialized = false;
+
+function initializePage() {
+    if (workspacePageInitialized) {
+        if (window.initializeHelpTutorial) {
+            window.initializeHelpTutorial();
+        }
+        return;
+    }
+    workspacePageInitialized = true;
+
     const modeToggle = document.getElementById('mode-toggle');
     if (!modeToggle) return;
 
@@ -71,7 +82,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const serverMode = modeToggle.dataset.activeMode === 'founder' ? 'founder' : 'vc';
     const storedMode = modeState && modeState.getStoredMode ? modeState.getStoredMode() : null;
     const resolvedMode = storedMode || serverMode;
-    const founderModeLink = document.getElementById('founder-mode-link');
 
     if (modeState && modeState.startModeLoading) {
         modeState.startModeLoading();
@@ -95,20 +105,6 @@ window.addEventListener('DOMContentLoaded', () => {
     applyModeUi(currentMode);
 
     const switchInput = document.getElementById('mode-switch-input');
-    if (founderModeLink) {
-        founderModeLink.addEventListener('click', (event) => {
-            event.preventDefault();
-            if (currentMode === 'founder') {
-                return;
-            }
-            currentMode = 'founder';
-            if (modeState && modeState.setMode) {
-                modeState.setMode('founder');
-            } else {
-                applyModeUi('founder');
-            }
-        });
-    }
     if (!switchInput) return;
 
     let switchFrameId = null;
@@ -138,4 +134,33 @@ window.addEventListener('DOMContentLoaded', () => {
             applySelectedMode(nextMode);
         });
     });
-});
+
+    if (!workspaceUiInitialized) {
+        workspaceUiInitialized = true;
+
+        document.addEventListener('click', (event) => {
+            const founderModeLink = event.target.closest('#founder-mode-link');
+            if (!founderModeLink) return;
+
+            event.preventDefault();
+            console.log('Founder mode link clicked');
+            if (currentMode === 'founder') {
+                return;
+            }
+            currentMode = 'founder';
+            if (modeState && modeState.setMode) {
+                modeState.setMode('founder');
+            } else {
+                applyModeUi('founder');
+            }
+        });
+    }
+
+    if (window.initializeHelpTutorial) {
+        window.initializeHelpTutorial();
+    }
+}
+
+window.initializePage = initializePage;
+
+window.addEventListener('DOMContentLoaded', initializePage);

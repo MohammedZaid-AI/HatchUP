@@ -165,15 +165,35 @@
         }
     }
 
+    function updateUIAfterLogin(user) {
+        if (!user) return;
+        state.isAuthModalOpen = false;
+        syncAuthModalVisibility();
+        updateAuthUi();
+        console.log("UI updated after login:", user.email || user.id || "unknown-user");
+    }
+
+    function updateUIAfterLogout() {
+        state.isAuthModalOpen = false;
+        syncAuthModalVisibility();
+        updateAuthUi();
+        console.log("UI updated after logout");
+    }
+
     function publishAuthState() {
         window.HatchupAuthState = {
+            session: currentSession,
+            user: currentSession && currentSession.user ? currentSession.user : null,
+            isAuthenticated: !!state.currentUser,
             currentUser: state.currentUser,
             isAuthReady: state.isAuthReady,
             isAuthModalOpen: state.isAuthModalOpen,
             pendingMode: state.pendingMode,
+            profile: state.profile,
         };
         window.dispatchEvent(new CustomEvent("hatchup:authchange", {
             detail: {
+                event: currentSession ? "SIGNED_IN" : "SIGNED_OUT",
                 currentUser: state.currentUser,
                 session: currentSession,
                 pendingMode: state.pendingMode,
@@ -634,7 +654,11 @@
         }
 
         syncAuthModalVisibility();
-        updateAuthUi();
+        if (state.currentUser) {
+            updateUIAfterLogin(currentSession.user);
+        } else {
+            updateUIAfterLogout();
+        }
         publishAuthState();
 
         if (state.currentUser) {
@@ -991,13 +1015,21 @@
             return;
         }
 
-        const { data } = await supabaseClient.auth.getSession();
-        await applySession(data ? data.session : null);
+        await checkSession();
         setAuthReady();
 
-        supabaseClient.auth.onAuthStateChange((_event, session) => {
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            console.log("Supabase auth state changed:", event, !!session);
             void applySession(session || null);
         });
+    }
+
+    async function checkSession() {
+        if (!supabaseClient) return null;
+        const { data } = await supabaseClient.auth.getSession();
+        console.log("Auth session restored:", !!(data && data.session));
+        await applySession(data ? data.session : null);
+        return data ? data.session : null;
     }
 
     window.waitForAuthReady = function () {
@@ -1050,11 +1082,18 @@
     window.submitEmailAuth = submitEmailAuth;
     window.loginWithGoogle = loginWithGoogle;
     window.logoutHatchup = logout;
+    window.updateUIAfterLogin = updateUIAfterLogin;
+    window.updateUIAfterLogout = updateUIAfterLogout;
+    window.checkHatchupSession = checkSession;
     window.HatchupAuthState = {
+        session: null,
+        user: null,
+        isAuthenticated: false,
         currentUser: null,
         isAuthReady: false,
         isAuthModalOpen: false,
         pendingMode: null,
+        profile: null,
     };
 
     if (document.readyState === "loading") {

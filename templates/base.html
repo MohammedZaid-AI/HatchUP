@@ -142,12 +142,62 @@
         </main>
     </div>
 
+    <button id="help-fab" class="help-fab" type="button" aria-label="Open HatchUp guide" title="Help">
+        <span aria-hidden="true">?</span>
+    </button>
+
+    <div id="tutorial-modal" class="tutorial-modal" hidden aria-hidden="true">
+        <div class="tutorial-modal-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" aria-describedby="tutorial-subtitle">
+            <button id="tutorial-close" class="tutorial-close" type="button" aria-label="Close tutorial">X</button>
+            <p class="tutorial-kicker">HatchUp Guide</p>
+            <h2 id="tutorial-title">Complete Guide for Startup Backers</h2>
+            <p id="tutorial-subtitle" class="tutorial-subtitle">Learn how to use HatchUp to analyze startups and make better investment decisions.</p>
+
+            <div class="tutorial-steps">
+                <article class="tutorial-step">
+                    <span class="tutorial-step-index">1</span>
+                    <div>
+                        <h3>Upload a Pitch Deck</h3>
+                        <p>Start by uploading a startup pitch deck to extract structured insights.</p>
+                    </div>
+                </article>
+                <article class="tutorial-step">
+                    <span class="tutorial-step-index">2</span>
+                    <div>
+                        <h3>Review Analysis</h3>
+                        <p>Understand market size, business model, traction, and risks.</p>
+                    </div>
+                </article>
+                <article class="tutorial-step">
+                    <span class="tutorial-step-index">3</span>
+                    <div>
+                        <h3>Use Deep Research</h3>
+                        <p>Ask targeted questions to uncover deeper insights and validate assumptions.</p>
+                    </div>
+                </article>
+                <article class="tutorial-step">
+                    <span class="tutorial-step-index">4</span>
+                    <div>
+                        <h3>Generate Investment Memo</h3>
+                        <p>Create a clean, decision-ready memo for internal discussions.</p>
+                    </div>
+                </article>
+            </div>
+
+            <div class="tutorial-actions">
+                <button id="tutorial-dismiss" class="tutorial-btn tutorial-btn-secondary" type="button">Got it</button>
+                <button id="tutorial-start-analysis" class="tutorial-btn tutorial-btn-primary" type="button">Start New Analysis</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/supabaseClient.js?v=20260228a"></script>
     <script src="/static/js/session.js?v=20260303b"></script>
     <script src="/static/js/mobile_notice.js?v=20260302a"></script>
     <script src="/static/js/mode_state.js?v=20260224c"></script>
     <script src="/static/js/analysis_manager.js?v=20260224c"></script>
     <script src="/static/js/main.js?v=20260303c"></script>
+    <script src="/static/js/help_tutorial.js?v=20260317a"></script>
     {% block scripts %}{% endblock %}
 
     <template id="profile-modal-template">
