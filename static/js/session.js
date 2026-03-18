@@ -21,6 +21,7 @@
     let logoutConfirmInProgress = false;
     let authRequestInFlight = false;
     let authLoadingSource = "";
+    let sessionRestoreInFlight = null;
     let authReadyResolve;
     const authReady = new Promise((resolve) => {
         authReadyResolve = resolve;
@@ -1020,16 +1021,41 @@
 
         supabaseClient.auth.onAuthStateChange((event, session) => {
             console.log("Supabase auth state changed:", event, !!session);
+            if (session && session.user) {
+                updateUIAfterLogin(session.user);
+            } else {
+                updateUIAfterLogout();
+            }
             void applySession(session || null);
         });
     }
 
     async function checkSession() {
         if (!supabaseClient) return null;
-        const { data } = await supabaseClient.auth.getSession();
-        console.log("Auth session restored:", !!(data && data.session));
-        await applySession(data ? data.session : null);
-        return data ? data.session : null;
+        if (sessionRestoreInFlight) {
+            return sessionRestoreInFlight;
+        }
+
+        sessionRestoreInFlight = (async () => {
+            const { data, error } = await supabaseClient.auth.getSession();
+            if (error) {
+                console.error("Failed to restore auth session:", error.message || error);
+            }
+            console.log("Auth session restored:", !!(data && data.session));
+            await applySession(data ? data.session : null);
+            return data ? data.session : null;
+        })();
+
+        try {
+            return await sessionRestoreInFlight;
+        } finally {
+            sessionRestoreInFlight = null;
+        }
+    }
+
+    function restoreSessionAfterDomReady() {
+        if (!supabaseClient) return;
+        void checkSession();
     }
 
     window.waitForAuthReady = function () {
@@ -1100,11 +1126,23 @@
         window.addEventListener("DOMContentLoaded", () => {
             bindAuthUi();
             bindProfileUi();
+            restoreSessionAfterDomReady();
         });
     } else {
         bindAuthUi();
         bindProfileUi();
+        restoreSessionAfterDomReady();
     }
+
+    window.addEventListener("pageshow", () => {
+        restoreSessionAfterDomReady();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && !currentSession) {
+            restoreSessionAfterDomReady();
+        }
+    });
 
     void bootstrapAuth().catch(() => {
         setAuthReady();
