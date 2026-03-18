@@ -1,6 +1,25 @@
+# Secrets
 .env
+.env.*
+!.env.example
+
+# Python
 venv/
+.venv/
 __pycache__/
-APP_PLAN.md
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local data / generated files
 data/
 db/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project-specific local notes
+APP_PLAN.md

@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,3 +136,8 @@ async def read_privacy(request: Request):
         "privacy.html",
         base_template_context(request, mode="vc")
     )
+
+
+@app.get("/healthz")
+async def healthz():
+    return JSONResponse({"status": "ok"})
