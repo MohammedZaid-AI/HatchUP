@@ -18,7 +18,7 @@
             resultsEl.innerHTML = `
                 <div class="founder-empty-state">
                     <h4>Talent Scout is ready</h4>
-                    <p>Search for engineers, marketers, creators, and operators by skill, role, or startup need.</p>
+                    <p>Search for engineers and operators by skill, role, or startup need.</p>
                 </div>
             `;
         }
@@ -32,7 +32,7 @@
             resultsEl.innerHTML = `
                 <div class="founder-loading-state">
                     <div class="spinner"></div>
-                    <p>Talent Scout is ranking mock profiles for this founder brief.</p>
+                    <p>Talent Scout is ranking profiles for this founder brief.</p>
                 </div>
             `;
         }
