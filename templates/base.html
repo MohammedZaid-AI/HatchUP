@@ -69,8 +69,11 @@
                     </nav>
 
                     <nav class="sidebar-nav" id="founder-nav">
-                        <a href="/founder" id="founder-mode-link" class="nav-link {% if request.url.path == '/founder' or request.url.path == '/founder-mode' or request.url.path == '/talent-scout' %}active{% endif %}">
+                        <a href="/founder" id="founder-mode-link" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
                             <i class="fas fa-rocket"></i> HatchUp Founders
+                        </a>
+                        <a href="/founder-mode" class="nav-link {% if request.url.path == '/founder-mode' or request.url.path == '/talent-scout' %}active{% endif %}">
+                            <i class="fas fa-users-viewfinder"></i> Talent Scout
                         </a>
                     </nav>
                 </div>
