@@ -69,7 +69,7 @@
                     </nav>
 
                     <nav class="sidebar-nav" id="founder-nav">
-                        <a href="#" id="founder-mode-link" class="nav-link {% if request.url.path == '/founder' %}active{% endif %}">
+                        <a href="/founder" id="founder-mode-link" class="nav-link {% if request.url.path == '/founder' or request.url.path == '/founder-mode' or request.url.path == '/talent-scout' %}active{% endif %}">
                             <i class="fas fa-rocket"></i> HatchUp Founders
                         </a>
                     </nav>
@@ -110,21 +110,22 @@
                 </div>
             </div>
             {% set is_chat_route = request.url.path == '/chat' or request.url.path == '/hatchup_chat' %}
-            <section id="{{ 'core-feature-view' if is_chat_route else 'vc-mode-view' }}" class="mode-view {{ 'mode-view-core' if is_chat_route else 'mode-view-vc' }}">
+            {% set is_founder_route = request.url.path == '/founder' or request.url.path == '/founder-mode' or request.url.path == '/talent-scout' %}
+            <section id="{{ 'core-feature-view' if is_chat_route else ('founder-page-view' if is_founder_route else 'vc-mode-view') }}" class="mode-view {{ 'mode-view-core' if is_chat_route else ('mode-view-founder-page' if is_founder_route else 'mode-view-vc') }}">
                 {% block content %}{% endblock %}
             </section>
-            {% if not is_chat_route %}
+            {% if not is_chat_route and not is_founder_route %}
             <section id="founder-mode-view" class="mode-view mode-view-founder" hidden>
                 <div class="content-header">
-                    <h1>HatchUp Founders</h1>
-                    <p>Founder Mode is visible for roadmap signaling. All tools are currently marked as coming soon.</p>
+                    <h1>Founder Workspace</h1>
+                    <p>Open the dedicated Founder Mode workspace to use Talent Scout and other founder workflows.</p>
                 </div>
 
                 <div class="grid-3 founder-grid">
                     <div class="card coming-soon-card">
-                        <h3>People & Talent</h3>
-                        <p>Hire smarter and manage team growth with structured workflows.</p>
-                        <span class="coming-soon-badge">Coming Soon</span>
+                        <h3>Talent Scout</h3>
+                        <p>Search for engineers, operators, and creators using public proof-of-work signals.</p>
+                        <a href="/founder-mode" class="btn-link" style="margin-top: 14px;">Open Founder Mode</a>
                     </div>
                     <div class="card coming-soon-card">
                         <h3>Finance Intelligence</h3>
@@ -196,7 +197,7 @@
     <script src="/static/js/mobile_notice.js?v=20260302a"></script>
     <script src="/static/js/mode_state.js?v=20260224c"></script>
     <script src="/static/js/analysis_manager.js?v=20260224c"></script>
-    <script src="/static/js/main.js?v=20260303c"></script>
+    <script src="/static/js/main.js?v=20260408d"></script>
     <script src="/static/js/help_tutorial.js?v=20260317a"></script>
     {% block scripts %}{% endblock %}
 

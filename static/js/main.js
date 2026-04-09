@@ -110,8 +110,20 @@ function initializePage() {
     let switchFrameId = null;
     let pendingMode = null;
 
+    function routeForMode(mode) {
+        return mode === 'founder' ? '/founder' : '/vc/deck-analyzer';
+    }
+
     function applySelectedMode(selectedMode) {
         if (selectedMode === currentMode) {
+            return;
+        }
+        const targetRoute = routeForMode(selectedMode);
+        if (window.location.pathname !== targetRoute) {
+            if (modeState && modeState.setMode) {
+                modeState.setMode(selectedMode);
+            }
+            window.location.href = targetRoute;
             return;
         }
         currentMode = selectedMode;
@@ -143,16 +155,10 @@ function initializePage() {
             if (!founderModeLink) return;
 
             event.preventDefault();
-            console.log('Founder mode link clicked');
-            if (currentMode === 'founder') {
-                return;
-            }
-            currentMode = 'founder';
             if (modeState && modeState.setMode) {
                 modeState.setMode('founder');
-            } else {
-                applyModeUi('founder');
             }
+            window.location.href = routeForMode('founder');
         });
     }
 

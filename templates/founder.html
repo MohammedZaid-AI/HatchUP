@@ -1,28 +1,113 @@
 {% extends "base.html" %}
 
-{% block title %}HatchUp Founders{% endblock %}
+{% block title %}Founder Mode{% endblock %}
 
 {% block content %}
-<div class="content-header">
-    <h1>HatchUp Founders</h1>
-    <p>Founder Mode is visible for roadmap signaling. All tools are currently marked as coming soon.</p>
-</div>
+<section class="founder-mode-shell">
+    <div class="founder-mode-banner">
+        <div class="founder-mode-banner-copy">
+            <p class="founder-kicker">Founder Mode</p>
+            <h1>Founder Mode</h1>
+            <p class="founder-mode-subtitle">Talent Scout AI Assistant</p>
+            <p class="founder-mode-description">
+                Search for engineers, marketers, creators, and startup operators from public proof-of-work signals.
+                This is a dedicated scouting workspace, separate from the Founder Workspace dashboard.
+            </p>
+        </div>
+        <div class="founder-mode-banner-actions">
+            <button id="founder-run-scout-button" class="btn-primary-action founder-mode-cta" type="button">Run Scout Search</button>
+            <a href="/founder" class="founder-mode-backlink">Back to Founder Workspace</a>
+        </div>
+    </div>
 
-<div class="grid-3 founder-grid">
-    <div class="card coming-soon-card">
-        <h3>People & Talent</h3>
-        <p>Hire smarter and manage team growth with structured workflows.</p>
-        <span class="coming-soon-badge">Coming Soon</span>
+    <div class="founder-mode-layout">
+        <div class="founder-mode-main">
+            <div class="card founder-query-card founder-mode-query-card">
+                <div class="founder-query-head">
+                    <div>
+                        <h3>Search Talent Scout</h3>
+                        <p>Describe the role, skillset, and startup context you want.</p>
+                    </div>
+                    <span class="founder-status-pill">Live MVP</span>
+                </div>
+
+                <div class="founder-query-input-row">
+                    <input
+                        id="founder-query-input"
+                        class="chat-input founder-query-input"
+                        type="text"
+                        placeholder="Find backend engineer skilled in AI"
+                        aria-label="Talent Scout search query">
+                    <button id="founder-query-button" class="btn" type="button">Search</button>
+                </div>
+
+                <div class="ready-queries founder-query-chips">
+                    <button class="query-chip founder-chip-button" type="button" data-founder-query="Find me a backend engineer who has worked on AI agents">AI agent backend engineer</button>
+                    <button class="query-chip founder-chip-button" type="button" data-founder-query="Find a growth hacker experienced in early-stage startups">Early-stage growth hacker</button>
+                    <button class="query-chip founder-chip-button" type="button" data-founder-query="Find a technical creator who writes about developer tools and distribution">Devtools creator</button>
+                    <button class="query-chip founder-chip-button" type="button" data-founder-query="Find a product marketer who can launch and iterate fast with a small team">Zero-to-one product marketer</button>
+                </div>
+            </div>
+
+            <div class="card founder-results-card founder-mode-results-card">
+                <div class="founder-results-head">
+                    <div>
+                        <h3>Talent Scout Results</h3>
+                        <p id="founder-search-status">Type a query and search to see matching Talent Scout profiles.</p>
+                    </div>
+                    <div class="founder-mode-results-badge">Live Multi-Source Search</div>
+                </div>
+                <div id="founder-results-list" class="founder-results-list">
+                    <div class="founder-empty-state">
+                        <h4>Talent Scout is ready</h4>
+                        <p>Search for engineers, marketers, creators, and operators by skill, role, or startup need.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="founder-mode-sidepanel">
+            <div class="card founder-mode-sidecard">
+                <h3>How Founder Mode Differs</h3>
+                <ul class="founder-list">
+                    <li>Dedicated Talent Scout workspace instead of dashboard cards.</li>
+                    <li>Interactive search, loading state, and instant mock candidate results.</li>
+                    <li>Designed for focused founder hiring flows.</li>
+                </ul>
+            </div>
+
+            <div class="card founder-mode-sidecard founder-mode-steps-card">
+                <h3>Talent Scout Flow</h3>
+                <div class="founder-mode-step">
+                    <span>1</span>
+                    <p>Enter a role, capability, or startup need.</p>
+                </div>
+                <div class="founder-mode-step">
+                    <span>2</span>
+                    <p>Run search to rank matching mock profiles.</p>
+                </div>
+                <div class="founder-mode-step">
+                    <span>3</span>
+                    <p>Review sources, summaries, and matched terms.</p>
+                </div>
+            </div>
+            <div class="card founder-mode-sidecard">
+                <h3>Data Sources</h3>
+                <ul class="founder-list">
+                    <li>GitHub</li>
+                    <li>X / Tech Twitter API</li>
+                    <li>Kaggle API</li>
+                    <li>LeetCode public profiles via search indexing</li>
+                    <li>Reddit</li>
+                    <li>SerpAPI for public profile discovery</li>
+                </ul>
+            </div>
+        </aside>
     </div>
-    <div class="card coming-soon-card">
-        <h3>Finance Intelligence</h3>
-        <p>Understand burn, runway, and financial health in one place.</p>
-        <span class="coming-soon-badge">Coming Soon</span>
-    </div>
-    <div class="card coming-soon-card">
-        <h3>Startup Operations</h3>
-        <p>Centralize HR, hiring, and execution workflows.</p>
-        <span class="coming-soon-badge">Coming Soon</span>
-    </div>
-</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/talent_scout.js?v=20260409a"></script>
+<script src="/static/js/founder_mode_v2.js?v=20260409b"></script>
 {% endblock %}

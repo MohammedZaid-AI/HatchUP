@@ -102,9 +102,22 @@ async def read_founder(request: Request):
     if not require_workspace_user(request):
         return RedirectResponse(url="/", status_code=307)
     return templates.TemplateResponse(
+        "founder_workspace.html",
+        base_template_context(request, mode="founder")
+    )
+
+@app.get("/founder-mode")
+async def read_founder_mode(request: Request):
+    if not require_workspace_user(request):
+        return RedirectResponse(url="/", status_code=307)
+    return templates.TemplateResponse(
         "founder.html",
         base_template_context(request, mode="founder")
     )
+
+@app.get("/talent-scout")
+async def read_talent_scout():
+    return RedirectResponse(url="/founder-mode", status_code=307)
 
 @app.get("/chat")
 async def read_hatchup_chat(request: Request):
