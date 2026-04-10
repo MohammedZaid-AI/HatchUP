@@ -178,14 +178,16 @@
         const statusEl = byId("founder-search-status");
         const chipEls = document.querySelectorAll(".founder-chip-button");
 
-        if (!inputEl || !searchButtonEl || !runButtonEl || !resultsEl || !statusEl || !window.TalentScout) {
+        if (!inputEl || !searchButtonEl || !resultsEl || !statusEl || !window.TalentScout) {
             return;
         }
 
         function setBusy(isBusy) {
             inputEl.disabled = isBusy;
             searchButtonEl.disabled = isBusy;
-            runButtonEl.disabled = isBusy;
+            if (runButtonEl) {
+                runButtonEl.disabled = isBusy;
+            }
         }
 
         function runSearch() {
@@ -243,7 +245,9 @@
         });
 
         searchButtonEl.addEventListener("click", runSearch);
-        runButtonEl.addEventListener("click", runSearch);
+        if (runButtonEl) {
+            runButtonEl.addEventListener("click", runSearch);
+        }
         inputEl.addEventListener("keydown", (event) => {
             if (event.key === "Enter") {
                 event.preventDefault();
