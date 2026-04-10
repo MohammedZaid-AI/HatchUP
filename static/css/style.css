@@ -2176,6 +2176,64 @@ img.logo-img {
     line-height: 1.66;
 }
 
+.founder-source-block {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: rgba(248, 250, 252, 0.9);
+}
+
+.founder-source-label {
+    margin: 0 0 8px;
+    color: #0f172a;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.founder-source-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #0f172a;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.founder-source-link:hover {
+    color: #1d4ed8;
+}
+
+.founder-source-link:hover .founder-source-icon {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.founder-source-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid #dbe4ee;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+.founder-source-empty {
+    display: inline-block;
+    color: #64748b;
+    font-size: 0.94rem;
+}
+
 .founder-score-row,
 .founder-tag-row {
     display: flex;

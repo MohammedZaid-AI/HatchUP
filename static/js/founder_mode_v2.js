@@ -1,4 +1,67 @@
 (function () {
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function getValidUrl(value) {
+        if (!value) {
+            return "";
+        }
+
+        try {
+            const url = new URL(String(value).trim());
+            return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
+        } catch (error) {
+            return "";
+        }
+    }
+
+    function getSourceIcon(source) {
+        const normalized = String(source || "").toLowerCase();
+        if (normalized.includes("github")) return "GH";
+        if (normalized.includes("twitter") || normalized === "x") return "TW";
+        if (normalized.includes("portfolio")) return "PF";
+        if (normalized.includes("website")) return "WB";
+        return "SR";
+    }
+
+    function renderSourceSignal(candidate) {
+        const sourceName = escapeHtml(candidate.source || candidate.primary_platform || "Source");
+        const sourceUrl = getValidUrl(
+            candidate.profile_url
+            || candidate.profileUrl
+            || candidate.source_url
+            || candidate.sourceUrl
+            || candidate.url
+            || ""
+        );
+        const icon = escapeHtml(getSourceIcon(candidate.source || candidate.primary_platform));
+
+        if (!sourceUrl) {
+            return `
+                <div class="founder-source-block" aria-label="Source signal unavailable">
+                    <p class="founder-source-label">Source Signal:</p>
+                    <span class="founder-source-empty">No source available</span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="founder-source-block">
+                <p class="founder-source-label">Source Signal:</p>
+                <a class="founder-source-link" href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">
+                    <span class="founder-source-icon" aria-hidden="true">${icon}</span>
+                    <span>${sourceName} Profile</span>
+                </a>
+            </div>
+        `;
+    }
+
     function byId(id) {
         return document.getElementById(id);
     }
@@ -76,29 +139,31 @@
                     <div>
                         <div class="founder-rank-line">
                             <span class="founder-rank-badge">#${index + 1}</span>
-                            <span class="founder-platform-pill">${candidate.primary_platform || candidate.source || "Web"}</span>
+                            <span class="founder-platform-pill">${escapeHtml(candidate.primary_platform || candidate.source || "Web")}</span>
                         </div>
-                        <h4>${candidate.name}</h4>
-                        <p class="founder-role-line">${candidate.role} - ${candidate.location || "Remote-friendly"}</p>
+                        <h4>${escapeHtml(candidate.name)}</h4>
+                        <p class="founder-role-line">${escapeHtml(candidate.role)} - ${escapeHtml(candidate.location || "Remote-friendly")}</p>
                     </div>
                     <div class="founder-score-stack">
-                        <strong>${candidate.match_score || candidate.score || 0}</strong>
+                        <strong>${escapeHtml(candidate.match_score || candidate.score || 0)}</strong>
                         <span>match</span>
                     </div>
                 </div>
 
-                <p class="founder-summary">${candidate.summary}</p>
+                <p class="founder-summary">${escapeHtml(candidate.summary)}</p>
+
+                ${renderSourceSignal(candidate)}
 
                 <div class="founder-tag-row">
-                    ${(candidate.tags || []).map((tag) => `<span class="founder-tag">${tag}</span>`).join("")}
+                    ${(candidate.tags || []).map((tag) => `<span class="founder-tag">${escapeHtml(tag)}</span>`).join("")}
                 </div>
 
                 <div class="founder-evidence-block">
                     <p class="founder-evidence-title">Why matched</p>
                     <ul class="founder-list founder-tight-list">
-                        <li>Role fit: ${candidate.role}</li>
-                        <li>Source signal: ${candidate.primary_platform || candidate.source || "Web"}</li>
-                        <li>Matched terms: ${(candidate.matchedTerms || []).join(", ") || "broad startup relevance"}</li>
+                        <li>Role fit: ${escapeHtml(candidate.role)}</li>
+                        <li>Source signal: ${escapeHtml(candidate.primary_platform || candidate.source || "Web")}</li>
+                        <li>Matched terms: ${escapeHtml((candidate.matchedTerms || []).join(", ") || "broad startup relevance")}</li>
                     </ul>
                 </div>
             </article>
