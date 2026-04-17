@@ -1,12 +1,37 @@
 const ANALYSIS_WORKSPACE_KEY = 'hatchup_workspace_cache';
 const LEGACY_ANALYSIS_KEY = 'hatchup_analysis';
 const LEGACY_RESEARCH_KEY = 'hatchup_deep_research_history';
+const ANALYSIS_WORKSPACE_META_KEY = 'hatchup_workspace_cache_meta';
+const ANALYSIS_WORKSPACE_TTL_MS = 2 * 60 * 1000;
 let hatchupWorkspace = null;
+let workspaceMeta = null;
+let refreshWorkspacePromise = null;
 
 function persistWorkspace() {
     if (hatchupWorkspace) {
         localStorage.setItem(ANALYSIS_WORKSPACE_KEY, JSON.stringify(hatchupWorkspace));
+        workspaceMeta = { updatedAt: Date.now() };
+        localStorage.setItem(ANALYSIS_WORKSPACE_META_KEY, JSON.stringify(workspaceMeta));
     }
+}
+
+function getWorkspaceMeta() {
+    if (workspaceMeta) return workspaceMeta;
+    const raw = localStorage.getItem(ANALYSIS_WORKSPACE_META_KEY);
+    if (!raw) return null;
+    try {
+        workspaceMeta = JSON.parse(raw);
+    } catch (error) {
+        console.error('Invalid workspace meta cache', error);
+        workspaceMeta = null;
+    }
+    return workspaceMeta;
+}
+
+function isWorkspaceFresh() {
+    const meta = getWorkspaceMeta();
+    if (!meta || !meta.updatedAt) return false;
+    return (Date.now() - meta.updatedAt) < ANALYSIS_WORKSPACE_TTL_MS;
 }
 
 function getCachedWorkspace() {
@@ -83,29 +108,57 @@ function renderPastAnalyses() {
 }
 
 window.refreshAnalysisWorkspace = async function () {
-    const res = await fetch('/api/session/analyses', {
+    if (refreshWorkspacePromise) {
+        return refreshWorkspacePromise;
+    }
+
+    refreshWorkspacePromise = fetch('/api/session/analyses', {
         headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {},
         credentials: 'same-origin',
-        cache: 'no-store'
-    });
-    if (res.status === 401) {
-        window.location.href = '/';
-        throw new Error('Authentication required');
-    }
-    if (!res.ok) throw new Error('Failed to load analyses');
-    hatchupWorkspace = await res.json();
-    persistWorkspace();
-    renderPastAnalyses();
-    return hatchupWorkspace;
+        cache: 'default'
+    })
+        .then(async (res) => {
+            if (res.status === 401) {
+                window.location.href = '/';
+                throw new Error('Authentication required');
+            }
+            if (!res.ok) throw new Error('Failed to load analyses');
+            hatchupWorkspace = await res.json();
+            persistWorkspace();
+            renderPastAnalyses();
+            return hatchupWorkspace;
+        })
+        .finally(() => {
+            refreshWorkspacePromise = null;
+        });
+
+    return refreshWorkspacePromise;
 };
 
 window.ensureAnalysisWorkspace = async function ({ force = false } = {}) {
     const cached = getCachedWorkspace();
+    const fresh = isWorkspaceFresh();
+    if (!force && cached && fresh) {
+        renderPastAnalyses();
+        if (!hasUsableActiveAnalysis(cached)) {
+            void window.refreshAnalysisWorkspace().catch(() => null);
+        }
+        return cached;
+    }
     if (!force && hasUsableActiveAnalysis(cached)) {
         renderPastAnalyses();
+        void window.refreshAnalysisWorkspace().catch(() => null);
         return cached;
     }
     return window.refreshAnalysisWorkspace();
+};
+
+window.preloadAnalysisWorkspace = function () {
+    const cached = getCachedWorkspace();
+    if (cached && isWorkspaceFresh()) {
+        return Promise.resolve(cached);
+    }
+    return window.refreshAnalysisWorkspace().catch(() => cached || null);
 };
 
 window.getAnalysisWorkspace = function () {
@@ -203,7 +256,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (window.HatchupAppState && window.HatchupAppState.subscribeMode) {
         window.HatchupAppState.subscribeMode(() => renderPastAnalyses());
     }
-    if (hasUsableActiveAnalysis(cached)) return;
+    if (cached && isWorkspaceFresh()) return;
+    if (hasUsableActiveAnalysis(cached)) {
+        void window.refreshAnalysisWorkspace().catch((error) => {
+            console.error('Workspace background refresh failed', error);
+        });
+        return;
+    }
     try {
         await window.refreshAnalysisWorkspace();
     } catch (error) {

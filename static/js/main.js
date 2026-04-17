@@ -2,6 +2,9 @@ function getModeState() {
     return window.HatchupAppState || null;
 }
 
+const routePrefetchState = new Map();
+let modePrefetchInitialized = false;
+
 function syncModeLoadingUi(isLoading) {
     const appContainer = document.getElementById('app-container');
     const modeLoader = document.getElementById('mode-loader');
@@ -58,9 +61,64 @@ function applyModeUi(mode) {
     if (pastAnalysesPanel) {
         pastAnalysesPanel.style.display = mode === 'vc' ? 'flex' : 'none';
     }
-    if (window.refreshAnalysisWorkspace && mode === 'vc') {
-        window.refreshAnalysisWorkspace().catch(() => null);
+    if (window.preloadAnalysisWorkspace && mode === 'vc') {
+        window.preloadAnalysisWorkspace().catch(() => null);
     }
+}
+
+function routeForMode(mode) {
+    return mode === 'founder' ? '/founder' : '/vc/deck-analyzer';
+}
+
+function preloadDocumentRoute(path) {
+    if (!path || routePrefetchState.has(path)) {
+        return routePrefetchState.get(path) || Promise.resolve();
+    }
+
+    const preloadPromise = new Promise((resolve) => {
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.as = 'document';
+        link.href = path;
+        link.onload = () => resolve();
+        link.onerror = () => resolve();
+        document.head.appendChild(link);
+
+        window.fetch(path, {
+            credentials: 'same-origin',
+            cache: 'force-cache'
+        }).catch(() => null).finally(resolve);
+    });
+
+    routePrefetchState.set(path, preloadPromise);
+    return preloadPromise;
+}
+
+function preloadModeResources(mode) {
+    const path = routeForMode(mode);
+    void preloadDocumentRoute(path);
+    if (mode === 'vc' && window.preloadAnalysisWorkspace) {
+        void window.preloadAnalysisWorkspace();
+    }
+}
+
+function scheduleModePreloads(currentMode) {
+    if (modePrefetchInitialized) {
+        preloadModeResources(currentMode === 'founder' ? 'vc' : 'founder');
+        return;
+    }
+
+    modePrefetchInitialized = true;
+    const warmRoutes = () => {
+        preloadModeResources(currentMode);
+        preloadModeResources(currentMode === 'founder' ? 'vc' : 'founder');
+    };
+
+    if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(warmRoutes, { timeout: 1200 });
+        return;
+    }
+    window.setTimeout(warmRoutes, 250);
 }
 
 let workspaceUiInitialized = false;
@@ -110,27 +168,23 @@ function initializePage() {
     let switchFrameId = null;
     let pendingMode = null;
 
-    function routeForMode(mode) {
-        return mode === 'founder' ? '/founder' : '/vc/deck-analyzer';
-    }
-
     function applySelectedMode(selectedMode) {
         if (selectedMode === currentMode) {
             return;
         }
         const targetRoute = routeForMode(selectedMode);
-        if (window.location.pathname !== targetRoute) {
-            if (modeState && modeState.setMode) {
-                modeState.setMode(selectedMode);
-            }
-            window.location.href = targetRoute;
-            return;
-        }
         currentMode = selectedMode;
         if (modeState && modeState.setMode) {
             modeState.setMode(selectedMode);
         } else {
             applyModeUi(selectedMode);
+        }
+        preloadModeResources(selectedMode === 'founder' ? 'vc' : 'founder');
+        if (window.location.pathname !== targetRoute) {
+            window.setTimeout(() => {
+                window.location.assign(targetRoute);
+            }, 0);
+            return;
         }
     }
 
@@ -158,8 +212,25 @@ function initializePage() {
             if (modeState && modeState.setMode) {
                 modeState.setMode('founder');
             }
-            window.location.href = routeForMode('founder');
+            preloadModeResources('founder');
+            window.location.assign(routeForMode('founder'));
         });
+    }
+
+    scheduleModePreloads(currentMode);
+
+    const founderNavLink = document.querySelector('a[href="/founder"]');
+    const founderScoutLink = document.querySelector('a[href="/founder-mode"]');
+    const vcDeckLink = document.querySelector('a[href="/vc/deck-analyzer"]');
+
+    [founderNavLink, founderScoutLink].forEach((link) => {
+        if (!link) return;
+        link.addEventListener('mouseenter', () => preloadModeResources('founder'), { passive: true });
+        link.addEventListener('focus', () => preloadModeResources('founder'), { passive: true });
+    });
+    if (vcDeckLink) {
+        vcDeckLink.addEventListener('mouseenter', () => preloadModeResources('vc'), { passive: true });
+        vcDeckLink.addEventListener('focus', () => preloadModeResources('vc'), { passive: true });
     }
 
     if (window.initializeHelpTutorial) {
