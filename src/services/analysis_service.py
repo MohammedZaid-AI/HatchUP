@@ -9,6 +9,8 @@ def _utc_now() -> str:
 
 
 class AnalysisService:
+    FOUNDER_WORKSPACE_TYPE = "founder_revenue_wedge"
+
     def __init__(self) -> None:
         try:
             from supabase import create_client
@@ -34,6 +36,10 @@ class AnalysisService:
             "user_id": row.get("user_id"),
         }
 
+    def _is_founder_workspace_row(self, row: Dict[str, Any]) -> bool:
+        deck_data = row.get("deck_data") or {}
+        return isinstance(deck_data, dict) and deck_data.get("workspace_type") == self.FOUNDER_WORKSPACE_TYPE
+
     def list_analyses(self, user_id: str) -> List[Dict[str, Any]]:
         response = (
             self.client.table("analyses")
@@ -42,7 +48,7 @@ class AnalysisService:
             .order("created_at", desc=True)
             .execute()
         )
-        rows = response.data or []
+        rows = [row for row in (response.data or []) if not self._is_founder_workspace_row(row)]
         items: List[Dict[str, Any]] = []
         for row in rows:
             deck = row.get("deck_data") or {}
@@ -86,6 +92,8 @@ class AnalysisService:
         row = (response.data or [None])[0]
         if not row:
             return None
+        if self._is_founder_workspace_row(row):
+            return None
         return self._row_to_analysis(row)
 
     def get_latest_analysis(self, user_id: str) -> Optional[Dict[str, Any]]:
@@ -94,10 +102,9 @@ class AnalysisService:
             .select("*")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
-            .limit(1)
             .execute()
         )
-        row = (response.data or [None])[0]
+        row = next((item for item in (response.data or []) if not self._is_founder_workspace_row(item)), None)
         if not row:
             return None
         return self._row_to_analysis(row)

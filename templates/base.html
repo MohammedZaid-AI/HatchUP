@@ -17,7 +17,7 @@
     </script>
     <link rel="prefetch" href="/founder" as="document">
     <link rel="prefetch" href="/vc/deck-analyzer" as="document">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260303b">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260417a">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -77,6 +77,9 @@
                         <a href="/founder-mode" class="nav-link {% if request.url.path == '/founder-mode' or request.url.path == '/talent-scout' %}active{% endif %}">
                             <i class="fas fa-users-viewfinder"></i> Talent Scout
                         </a>
+                        <a href="/founder/revenue-wedge" class="nav-link {% if request.url.path == '/founder/revenue-wedge' %}active{% endif %}">
+                            <i class="fas fa-bullseye"></i> Revenue Wedge
+                        </a>
                     </nav>
                 </div>
 
@@ -115,7 +118,7 @@
                 </div>
             </div>
             {% set is_chat_route = request.url.path == '/chat' or request.url.path == '/hatchup_chat' %}
-            {% set is_founder_route = request.url.path == '/founder' or request.url.path == '/founder-mode' or request.url.path == '/talent-scout' %}
+            {% set is_founder_route = request.url.path == '/founder' or request.url.path == '/founder-mode' or request.url.path == '/talent-scout' or request.url.path == '/founder/revenue-wedge' %}
             <section id="{{ 'core-feature-view' if is_chat_route else ('founder-page-view' if is_founder_route else 'vc-mode-view') }}" class="mode-view {{ 'mode-view-core' if is_chat_route else ('mode-view-founder-page' if is_founder_route else 'mode-view-vc') }}">
                 {% block content %}{% endblock %}
             </section>

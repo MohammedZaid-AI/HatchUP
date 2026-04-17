@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Revenue Wedge Engine{% endblock %}
+
+{% block content %}
+<section class="founder-mode-shell revenue-wedge-shell">
+    <div class="founder-mode-banner revenue-wedge-banner">
+        <div class="founder-mode-banner-copy">
+            <p class="founder-kicker">Founder Mode</p>
+            <h1>Revenue Wedge Engine</h1>
+            <p class="founder-mode-subtitle">Weekly Decision Brief</p>
+            <p class="founder-mode-description">
+                Feed messy founder inputs into one decision engine that tells you who to sell to, what to say, and what to change this week to increase revenue.
+            </p>
+        </div>
+        <div class="founder-mode-banner-actions">
+            <a href="/founder" class="founder-mode-backlink">Back to Founder Workspace</a>
+        </div>
+    </div>
+
+    <div class="revenue-wedge-layout">
+        <div class="revenue-wedge-main">
+            <section class="card revenue-input-card">
+                <div class="revenue-section-head">
+                    <div>
+                        <h3>Founder Inputs</h3>
+                        <p>Upload or paste the raw operating signals behind your revenue decisions.</p>
+                    </div>
+                    <span class="founder-status-pill">Decision Engine</span>
+                </div>
+
+                <form id="revenue-input-form" class="revenue-input-form">
+                    <div class="grid-2 revenue-input-grid">
+                        <div>
+                            <label for="revenue-input-title">Input title</label>
+                            <input id="revenue-input-title" name="title" class="chat-input revenue-mini-input" type="text" placeholder="Q2 founder sales calls" />
+                        </div>
+                        <div>
+                            <label for="revenue-input-tag">Tag</label>
+                            <select id="revenue-input-tag" name="tag" class="chat-input revenue-mini-input">
+                                <option value="sales_call">sales_call</option>
+                                <option value="customer_interview">customer_interview</option>
+                                <option value="lost_deal">lost_deal</option>
+                                <option value="support">support</option>
+                                <option value="landing_page">landing_page</option>
+                                <option value="pitch_deck">pitch_deck</option>
+                                <option value="crm_export">crm_export</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="revenue-upload-row">
+                        <div class="revenue-upload-box">
+                            <label for="revenue-input-file">Upload file</label>
+                            <input id="revenue-input-file" name="file" type="file" accept=".txt,.pdf,.docx,.csv" />
+                            <p class="revenue-hint">Supported: `.txt`, `.pdf`, `.docx`, `.csv`</p>
+                        </div>
+                        <div class="revenue-upload-divider"><span>or</span></div>
+                        <div class="revenue-upload-box">
+                            <label for="revenue-input-text">Paste raw notes</label>
+                            <textarea id="revenue-input-text" name="pasted_text" class="data-input revenue-textarea" placeholder="Paste call notes, objections, support complaints, CRM loss reasons, landing page copy, or customer interview notes."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="revenue-form-actions">
+                        <button id="revenue-save-input" class="btn" type="submit">Add Input</button>
+                        <p id="revenue-input-feedback" class="revenue-inline-feedback"></p>
+                    </div>
+                </form>
+
+                <div class="revenue-inputs-head">
+                    <div>
+                        <h4>Workspace inputs</h4>
+                        <p id="revenue-inputs-meta" class="revenue-inline-label">No saved inputs yet.</p>
+                    </div>
+                    <button id="revenue-run-button" class="btn" type="button">Generate Weekly Decision</button>
+                </div>
+                <div id="revenue-inputs-list" class="revenue-inputs-list">
+                    <div class="founder-empty-state">
+                        <h4>No founder inputs yet</h4>
+                        <p>Add at least one sales, customer, or GTM input to run the engine.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card revenue-output-card">
+                <div class="revenue-section-head">
+                    <div>
+                        <h3>Weekly Decision Brief</h3>
+                        <p id="revenue-run-meta">Run the engine to get one operator-grade recommendation.</p>
+                        <p id="revenue-source-meta" class="revenue-inline-label"></p>
+                    </div>
+                    <div id="revenue-confidence-pill" class="revenue-confidence-pill" hidden></div>
+                </div>
+
+                <div id="revenue-output-state" class="revenue-output-state">
+                    <div class="founder-empty-state">
+                        <h4>One clear wedge, not a dashboard</h4>
+                        <p>The output will force one ICP, one core problem, one decision, and ready-to-use execution assets.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <aside class="revenue-wedge-sidepanel">
+            <section class="card founder-mode-sidecard revenue-sidecard">
+                <h3>How it works</h3>
+                <div class="founder-mode-step">
+                    <span>1</span>
+                    <p>Add raw founder inputs from calls, interviews, support, CRM exports, or copy.</p>
+                </div>
+                <div class="founder-mode-step">
+                    <span>2</span>
+                    <p>HatchUp extracts ICPs, pains, objections, triggers, blockers, and customer language.</p>
+                </div>
+                <div class="founder-mode-step">
+                    <span>3</span>
+                    <p>You get one decision brief plus assets you can use this week.</p>
+                </div>
+            </section>
+
+            <section class="card founder-mode-sidecard revenue-sidecard">
+                <div class="revenue-history-head">
+                    <h3>Run History</h3>
+                    <p>Log experiment results so the next run compares what changed.</p>
+                </div>
+                <div id="revenue-runs-list" class="revenue-runs-list">
+                    <p class="founder-muted">No runs yet.</p>
+                </div>
+            </section>
+        </aside>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/revenue_wedge.js?v=20260417a"></script>
+{% endblock %}

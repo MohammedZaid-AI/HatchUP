@@ -51,6 +51,7 @@ for router_module in (
     "routers.auth",
     "routers.analyze",
     "routers.chat",
+    "routers.founder",
     "routers.memo",
 ):
     include_router_safely(router_module)
@@ -125,6 +126,12 @@ async def read_founder_mode(request: Request):
     if not require_workspace_user(request):
         return RedirectResponse(url="/", status_code=307)
     return render_template(request, "founder.html", mode="founder")
+
+@app.get("/founder/revenue-wedge")
+async def read_founder_revenue_wedge(request: Request):
+    if not require_workspace_user(request):
+        return RedirectResponse(url="/", status_code=307)
+    return render_template(request, "founder_revenue_wedge.html", mode="founder")
 
 @app.get("/talent-scout")
 async def read_talent_scout():

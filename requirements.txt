@@ -9,6 +9,7 @@ langchain-community
 pandas
 openpyxl
 python-pptx
+python-docx
 pypdf
 pillow
 fpdf

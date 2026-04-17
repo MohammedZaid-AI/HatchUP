@@ -2477,6 +2477,312 @@ img.logo-img {
     line-height: 1.55;
 }
 
+.revenue-wedge-shell {
+    gap: 20px;
+}
+
+.revenue-wedge-banner {
+    background:
+        radial-gradient(circle at top left, rgba(255, 236, 214, 0.95), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(196, 241, 255, 0.78), transparent 36%),
+        linear-gradient(135deg, #fff8ef 0%, #fffdfa 48%, #f0f9ff 100%);
+}
+
+.revenue-wedge-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(310px, 0.8fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.revenue-wedge-main,
+.revenue-wedge-sidepanel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.revenue-input-card,
+.revenue-output-card,
+.revenue-sidecard {
+    margin-bottom: 0;
+    border-radius: 22px;
+}
+
+.revenue-section-head,
+.revenue-history-head,
+.revenue-inputs-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.revenue-section-head p,
+.revenue-history-head p,
+.revenue-inline-label {
+    margin: 8px 0 0;
+    color: #64748b;
+}
+
+.revenue-input-form {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.revenue-input-form label {
+    display: block;
+    margin-bottom: 8px;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.revenue-mini-input {
+    min-height: 46px;
+    padding: 12px 14px;
+    box-sizing: border-box;
+}
+
+.revenue-input-grid {
+    gap: 16px;
+}
+
+.revenue-upload-row {
+    display: grid;
+    grid-template-columns: minmax(240px, 0.82fr) 64px minmax(0, 1.18fr);
+    gap: 16px;
+    align-items: stretch;
+}
+
+.revenue-upload-box {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    padding: 16px;
+    background: #fbfdff;
+}
+
+.revenue-upload-box input[type="file"] {
+    width: 100%;
+    margin-top: 6px;
+}
+
+.revenue-upload-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.revenue-upload-divider span {
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 6px 10px;
+    background: #ffffff;
+}
+
+.revenue-textarea {
+    min-height: 180px;
+    margin-top: 6px;
+}
+
+.revenue-hint {
+    margin: 10px 0 0;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.revenue-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.revenue-inline-feedback {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.revenue-inline-feedback[data-tone="error"] {
+    color: #b91c1c;
+}
+
+.revenue-inline-feedback[data-tone="success"] {
+    color: #047857;
+}
+
+.revenue-inputs-head {
+    margin-top: 8px;
+}
+
+.revenue-inputs-head h4 {
+    margin: 0;
+    color: #111827;
+}
+
+.revenue-inputs-list,
+.revenue-runs-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.revenue-input-item,
+.revenue-run-item,
+.revenue-brief-card,
+.revenue-brief-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    padding: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.revenue-input-item-top,
+.revenue-run-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.revenue-input-meta-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.revenue-input-tag,
+.revenue-input-source,
+.revenue-run-confidence,
+.revenue-confidence-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.revenue-input-tag {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.revenue-input-source {
+    background: #f8fafc;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+}
+
+.revenue-input-item h4,
+.revenue-run-head strong {
+    margin: 10px 0 0;
+    color: #111827;
+    font-size: 1rem;
+}
+
+.revenue-input-item p,
+.revenue-run-head p,
+.revenue-run-summary,
+.revenue-brief-support,
+.revenue-brief-card p {
+    margin: 8px 0 0;
+    color: #475569;
+    line-height: 1.62;
+}
+
+.revenue-output-state {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.revenue-confidence-pill,
+.revenue-run-confidence {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.revenue-brief-kicker {
+    margin: 0;
+    color: #9a3412;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+}
+
+.revenue-brief-section h2 {
+    margin: 8px 0 0;
+    font-size: clamp(1.7rem, 3.2vw, 2.2rem);
+    line-height: 1.06;
+    letter-spacing: -0.03em;
+    color: #111827;
+}
+
+.revenue-brief-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.revenue-brief-card h3 {
+    margin: 0;
+    color: #111827;
+}
+
+.revenue-asset-panel {
+    margin-top: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+}
+
+.revenue-asset-panel summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: #111827;
+}
+
+.revenue-asset-panel pre {
+    margin: 12px 0 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+    color: #334155;
+    line-height: 1.66;
+}
+
+.revenue-run-result-form {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.revenue-run-result-form label {
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.revenue-run-notes {
+    min-height: 110px;
+}
+
 @media (max-width: 1024px) {
     .grid-3 {
         grid-template-columns: 1fr;
@@ -2487,6 +2793,11 @@ img.logo-img {
     }
 
     .founder-mode-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .revenue-wedge-layout,
+    .revenue-brief-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -2652,6 +2963,21 @@ img.logo-img {
 
     .founder-mode-results-badge {
         align-self: flex-start;
+    }
+
+    .revenue-upload-row,
+    .revenue-section-head,
+    .revenue-history-head,
+    .revenue-inputs-head,
+    .revenue-input-item-top,
+    .revenue-run-head,
+    .revenue-form-actions {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+    }
+
+    .revenue-upload-divider {
+        min-height: 36px;
     }
 }
 

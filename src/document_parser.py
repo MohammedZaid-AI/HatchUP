@@ -1,10 +1,14 @@
-import os
+import csv
+import io
 from typing import List, Dict, Union
 import PyPDF2
 from pptx import Presentation
 from PIL import Image
 import pytesseract
-import io
+try:
+    from docx import Document
+except Exception:
+    Document = None
 
 class DocumentParser:
     """
@@ -23,6 +27,12 @@ class DocumentParser:
             return DocumentParser._parse_pdf(uploaded_file)
         elif filename.endswith(".pptx") or filename.endswith(".ppt"):
             return DocumentParser._parse_pptx(uploaded_file)
+        elif filename.endswith(".docx"):
+            return DocumentParser._parse_docx(uploaded_file)
+        elif filename.endswith(".txt"):
+            return DocumentParser._parse_text(uploaded_file)
+        elif filename.endswith(".csv"):
+            return DocumentParser._parse_csv(uploaded_file)
         elif filename.endswith((".png", ".jpg", ".jpeg")):
             return DocumentParser._parse_image(uploaded_file)
         else:
@@ -53,6 +63,46 @@ class DocumentParser:
         except Exception as e:
             return f"Error parsing PPTX: {str(e)}"
         return text
+
+    @staticmethod
+    def _parse_docx(file) -> str:
+        if Document is None:
+            return "Error parsing DOCX: python-docx is not installed."
+        try:
+            doc = Document(file)
+            return "\n".join(paragraph.text for paragraph in doc.paragraphs if paragraph.text)
+        except Exception as e:
+            return f"Error parsing DOCX: {str(e)}"
+
+    @staticmethod
+    def _read_text_bytes(file) -> str:
+        try:
+            if hasattr(file, "seek"):
+                file.seek(0)
+            raw = file.read()
+            if isinstance(raw, str):
+                return raw
+            return raw.decode("utf-8", errors="ignore")
+        except Exception as e:
+            return f"Error reading text file: {str(e)}"
+
+    @staticmethod
+    def _parse_text(file) -> str:
+        return DocumentParser._read_text_bytes(file)
+
+    @staticmethod
+    def _parse_csv(file) -> str:
+        try:
+            text = DocumentParser._read_text_bytes(file)
+            rows = csv.reader(io.StringIO(text))
+            flattened = []
+            for row in rows:
+                cleaned = [cell.strip() for cell in row if cell and cell.strip()]
+                if cleaned:
+                    flattened.append(" | ".join(cleaned))
+            return "\n".join(flattened)
+        except Exception as e:
+            return f"Error parsing CSV: {str(e)}"
 
     @staticmethod
     def _parse_image(file) -> str:
