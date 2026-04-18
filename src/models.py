@@ -65,6 +65,8 @@ class RevenueCluster(BaseModel):
     revenue_impact: int
     conversion_signal: int
     outcome_score: int
+    won_signal_score: int = 0
+    lost_signal_score: int = 0
     sources: List[str]
     evidence_quotes: List[str]
     stages: List[str]
@@ -117,6 +119,10 @@ class RevenueRunComparison(BaseModel):
     what_failed: List[str]
     next_move: str
     adaptation_reasoning: str
+    previous_hypothesis: str = ""
+    new_hypothesis: str = ""
+    alternative_hypotheses: List[str] = []
+    exploration_mode: bool = False
 
 
 class RevenueLearnedPattern(BaseModel):
@@ -125,6 +131,7 @@ class RevenueLearnedPattern(BaseModel):
     winning_messages: List[str]
     last_adaptation: str = ""
     strongest_problem: str = ""
+    winning_pattern_summary: str = ""
 
 
 class RevenueWedgeInputRecord(BaseModel):

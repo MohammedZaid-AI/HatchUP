@@ -36,6 +36,7 @@ class FounderWorkspaceService:
                 "winning_messages": [],
                 "last_adaptation": "",
                 "strongest_problem": "",
+                "winning_pattern_summary": "",
             },
         }
 
@@ -69,6 +70,7 @@ class FounderWorkspaceService:
         best_score = -1
         strongest_problem = ""
         last_adaptation = ""
+        winning_pattern_summary = ""
 
         for run in runs:
             brief = run.get("decision_brief") or {}
@@ -85,6 +87,10 @@ class FounderWorkspaceService:
                 headline = (((brief.get("assets") or {}).get("landing_page_headline")) or "").strip()
                 if headline:
                     winning_messages = [headline]
+                winning_pattern_summary = (
+                    f"Winning runs concentrated around {best_icp} when the message made the decision output clearer and the core problem was "
+                    f"{strongest_problem}."
+                ).strip()
 
             objection = (outcome.get("top_objection") or "").strip()
             if objection:
@@ -103,6 +109,7 @@ class FounderWorkspaceService:
             "winning_messages": winning_messages[:3],
             "last_adaptation": last_adaptation,
             "strongest_problem": strongest_problem,
+            "winning_pattern_summary": winning_pattern_summary,
         }
 
     def get_or_create_workspace(self, user_id: str) -> Dict[str, Any]:

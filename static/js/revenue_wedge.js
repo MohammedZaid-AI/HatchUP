@@ -139,16 +139,31 @@
         if (signalQuality.insufficient_signal || !brief) {
             outputEl.innerHTML = `
                 <div class="founder-empty-state revenue-low-signal-state">
-                    <h4>Not enough commercial signal yet</h4>
-                    <p>${escapeHtml(signalQuality.reasoning || "The engine cannot make a trustworthy weekly recommendation from the current inputs.")}</p>
+                    <h4>You're one step away from your first decision</h4>
+                    <p>${escapeHtml(signalQuality.reasoning || "Add one more strong commercial pattern and the engine can force a weekly decision.")}</p>
+                    <p class="revenue-inline-label">Progress status</p>
                     <ul class="founder-list founder-tight-list">
-                        ${((signalQuality.details || []).map((item) => `<li>${escapeHtml(item)}</li>`).join(""))}
+                        ${((signalQuality.progress_status || []).map((item) => `<li>${escapeHtml(item)}</li>`).join(""))}
                     </ul>
-                    <p class="revenue-inline-label">What to add next</p>
+                    <p class="revenue-inline-label">What's missing</p>
                     <ul class="founder-list founder-tight-list">
-                        <li>Add at least 2-3 real sales calls, customer interviews, lost-deal notes, or support threads.</li>
-                        <li>Use readable commercial language: pains, objections, buyer type, urgency, and why deals stalled.</li>
-                        <li>Avoid placeholder or nonsense text because the engine will intentionally refuse to guess.</li>
+                        ${((signalQuality.missing_pieces || []).map((item) => `<li>${escapeHtml(item)}</li>`).join(""))}
+                    </ul>
+                    <p class="revenue-inline-label">To unlock your first decision</p>
+                    <ul class="founder-list founder-tight-list">
+                        ${((signalQuality.minimum_requirements || []).map((item) => `<li>${escapeHtml(item)}</li>`).join(""))}
+                    </ul>
+                    <p class="revenue-inline-label">Copy-paste template</p>
+                    <div class="founder-list founder-tight-list">
+                        ${((signalQuality.copy_paste_templates || []).map((item) => `<pre class="revenue-template-block">${escapeHtml(item)}</pre>`).join(""))}
+                    </div>
+                    <p class="revenue-inline-label">Good input examples</p>
+                    <ul class="founder-list founder-tight-list">
+                        ${((signalQuality.good_input_examples || []).map((item) => `<li>${escapeHtml(item)}</li>`).join(""))}
+                    </ul>
+                    <p class="revenue-inline-label">Once you add that, you'll get</p>
+                    <ul class="founder-list founder-tight-list">
+                        ${((signalQuality.what_happens_next || []).map((item) => `<li>${escapeHtml(item)}</li>`).join(""))}
                     </ul>
                 </div>
             `;
