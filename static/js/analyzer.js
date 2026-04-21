@@ -7,6 +7,42 @@ const resultsContainer = document.getElementById('results-container');
 const loadingText = document.getElementById('loading-text');
 let analysisLoading = true;
 
+async function extractErrorMessage(response, fallbackMessage) {
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    let raw = '';
+
+    try {
+        raw = await response.text();
+    } catch (error) {
+        return fallbackMessage;
+    }
+
+    if (!raw) {
+        return fallbackMessage;
+    }
+
+    if (contentType.includes('application/json')) {
+        try {
+            const payload = JSON.parse(raw);
+            if (payload && typeof payload.detail === 'string' && payload.detail.trim()) {
+                return payload.detail.trim();
+            }
+        } catch (error) {
+            // Fall through to generic handling.
+        }
+    }
+
+    if (raw.trim().startsWith('<!DOCTYPE') || raw.trim().startsWith('<html')) {
+        if (response.status >= 500) {
+            return 'The server returned an HTML error page. Check the Render logs for the real backend error.';
+        }
+        return fallbackMessage;
+    }
+
+    const compact = raw.replace(/\s+/g, ' ').trim();
+    return compact || fallbackMessage;
+}
+
 function showAnalyzerLoadingState() {
     if (analyzerLoadingState) analyzerLoadingState.style.display = 'block';
     if (uploadContainer) uploadContainer.style.display = 'none';
@@ -90,7 +126,9 @@ async function handleFile(file) {
             headers: window.getHatchupSessionHeaders ? window.getHatchupSessionHeaders() : {},
             body: formData
         });
-        if (!analyzeRes.ok) throw new Error(await analyzeRes.text());
+        if (!analyzeRes.ok) {
+            throw new Error(await extractErrorMessage(analyzeRes, 'Failed to analyze deck.'));
+        }
         const analyzePayload = await analyzeRes.json();
         const deckData = analyzePayload.deck || analyzePayload;
 
@@ -103,7 +141,9 @@ async function handleFile(file) {
             },
             body: JSON.stringify(deckData)
         });
-        if (!memoRes.ok) throw new Error(await memoRes.text());
+        if (!memoRes.ok) {
+            throw new Error(await extractErrorMessage(memoRes, 'Failed to generate memo.'));
+        }
         const memoData = await memoRes.json();
         if (window.setActiveAnalysisCache && memoData.analysis_id) {
             window.setActiveAnalysisCache({
@@ -276,7 +316,9 @@ window.regenerateMemo = async function () {
             },
             body: JSON.stringify(updatedData)
         });
-        if (!memoRes.ok) throw new Error(await memoRes.text());
+        if (!memoRes.ok) {
+            throw new Error(await extractErrorMessage(memoRes, 'Failed to regenerate memo.'));
+        }
         const memoData = await memoRes.json();
         if (window.setActiveAnalysisCache) {
             const current = window.getActiveAnalysis ? (window.getActiveAnalysis() || {}) : {};
