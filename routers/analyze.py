@@ -3,6 +3,7 @@ import shutil
 import tempfile
 from functools import lru_cache
 from typing import Any, Dict, List
+from hashlib import sha256
 
 from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
@@ -32,6 +33,25 @@ class ResearchStatePayload(BaseModel):
 
 def get_authenticated_user_id(request: Request) -> str:
     return require_user_id(request)
+
+
+@router.get("/api/debug/groq-key")
+async def debug_groq_key(request: Request):
+    # Require auth so this diagnostic is only available to signed-in users.
+    require_user_id(request)
+    raw_value = os.environ.get("GROQ_API_KEY")
+    normalized_value = normalize_secret(raw_value)
+
+    return {
+        "present": bool(raw_value),
+        "normalized_present": bool(normalized_value),
+        "raw_length": len(raw_value or ""),
+        "normalized_length": len(normalized_value),
+        "starts_with_gsk": normalized_value.startswith("gsk_"),
+        "has_wrapping_quotes": bool(raw_value) and raw_value.strip()[:1] in {"'", '"'} and raw_value.strip()[-1:] in {"'", '"'},
+        "has_whitespace_padding": bool(raw_value) and raw_value != raw_value.strip(),
+        "fingerprint_prefix": sha256(normalized_value.encode("utf-8")).hexdigest()[:12] if normalized_value else "",
+    }
 
 @router.post("/api/analyze")
 async def analyze_deck(request: Request, response: Response, file: UploadFile = File(...)):
