@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import json
 import asyncio
+import hashlib
 import logging
 import re
 import time
@@ -35,6 +36,7 @@ GITHUB_TIMEOUT_SECONDS = 8
 SERPAPI_BASE = "https://serpapi.com/search.json"
 X_API_BASE = "https://api.x.com/2"
 KAGGLE_API_BASE = "https://www.kaggle.com/api/v1"
+EXCLUDED_TALENT_SCOUT_DOMAINS = ("linkedin.com", "naukri.com")
 
 
 @lru_cache(maxsize=1)
@@ -538,6 +540,11 @@ def _infer_platform_from_url(url: str) -> str:
     return "Web"
 
 
+def _is_excluded_talent_source(url: str) -> bool:
+    normalized = str(url or "").lower()
+    return any(domain in normalized for domain in EXCLUDED_TALENT_SCOUT_DOMAINS)
+
+
 def _extract_search_items(payload: Any) -> List[Dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
@@ -553,6 +560,8 @@ def _web_candidate_from_result(query_meta: Dict[str, Any], item: Dict[str, Any])
     title = str(item.get("title") or item.get("name") or "").strip()
     link = str(item.get("link") or item.get("url") or "").strip()
     snippet = str(item.get("snippet") or item.get("content") or item.get("body") or "").strip()
+    if _is_excluded_talent_source(link):
+        return None
     if not title and not snippet:
         return None
 
@@ -623,6 +632,120 @@ def _serpapi_candidate_from_result(query_meta: Dict[str, Any], item: Dict[str, A
     if candidate["primary_platform"] == "Web":
         return None
     return candidate
+
+
+def _extract_tavily_items(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, dict):
+        for key in ("results", "items", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, str):
+        try:
+            decoded = json.loads(payload)
+            return _extract_tavily_items(decoded)
+        except Exception:
+            return []
+    return []
+
+
+def _tavily_candidate_from_result(query_meta: Dict[str, Any], item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    candidate = _web_candidate_from_result(
+        query_meta,
+        {
+            "title": item.get("title") or item.get("name"),
+            "link": item.get("url") or item.get("link"),
+            "snippet": item.get("content") or item.get("snippet"),
+        },
+    )
+    if not candidate:
+        return None
+    if candidate["primary_platform"] == "Web":
+        return None
+
+    candidate["why_matched"] = [
+        f"Tavily surfaced this public profile from {candidate['primary_platform']}",
+        f"Query overlap found on {', '.join(candidate.get('tags', [])[:3]) or 'relevant startup terms'}",
+        "Useful as a non-LinkedIn discovery lead with public proof-of-work.",
+    ]
+    candidate["summary"] = candidate.get("summary") or "Public profile discovered from Tavily search."
+    return candidate
+
+
+async def _fetch_tavily_candidates(query: str, query_meta: Dict[str, Any], sessions: Dict[str, Any], max_results: int = 20) -> List[Dict[str, Any]]:
+    tavily_query = (
+        f'{query} (site:github.com OR site:leetcode.com OR site:kaggle.com OR '
+        f'site:codeforces.com OR site:dev.to OR site:medium.com OR site:substack.com OR '
+        f'site:huggingface.co OR site:gitlab.com OR site:x.com) '
+        f'-site:linkedin.com -site:naukri.com'
+    )
+    payload = await _call_tool_with_timeout(
+        sessions,
+        "@tavily/mcp-server",
+        "tavily",
+        {"query": tavily_query},
+        "Tavily",
+    )
+    if isinstance(payload, Exception) or (isinstance(payload, str) and payload.startswith("[Tavily MCP Error:")):
+        return []
+
+    candidates: List[Dict[str, Any]] = []
+    for item in _extract_tavily_items(payload):
+        candidate = _tavily_candidate_from_result(query_meta, item)
+        if candidate:
+            candidates.append(candidate)
+        if len(candidates) >= max_results:
+            break
+    return candidates
+
+
+def _diversify_ranked_candidates(candidates: List[Dict[str, Any]], limit: int = 30, nonce: str = "") -> List[Dict[str, Any]]:
+    unique_by_url: Dict[str, Dict[str, Any]] = {}
+    for candidate in candidates:
+        url = str(candidate.get("profile_url") or "").strip().lower()
+        if not url or _is_excluded_talent_source(url):
+            continue
+        existing = unique_by_url.get(url)
+        if not existing or int(candidate.get("match_score") or 0) > int(existing.get("match_score") or 0):
+            unique_by_url[url] = candidate
+
+    by_platform: Dict[str, List[Dict[str, Any]]] = {}
+    for candidate in unique_by_url.values():
+        platform = str(candidate.get("primary_platform") or "Web")
+        by_platform.setdefault(platform, []).append(candidate)
+
+    def _platform_order_key(platform: str) -> str:
+        digest = hashlib.sha256(f"{platform}:{nonce}".encode("utf-8")).hexdigest()
+        return digest
+
+    diversified: List[Dict[str, Any]] = []
+    platforms = sorted(by_platform.keys(), key=_platform_order_key)
+    for platform in platforms:
+        by_platform[platform].sort(
+            key=lambda item: (
+                -int(item.get("match_score") or 0),
+                hashlib.sha256(
+                    f"{item.get('profile_url','')}:{nonce}".encode("utf-8")
+                ).hexdigest(),
+            )
+        )
+
+    round_index = 0
+    while len(diversified) < limit:
+        added_this_round = False
+        for platform in platforms:
+            items = by_platform.get(platform) or []
+            if round_index < len(items):
+                diversified.append(items[round_index])
+                added_this_round = True
+                if len(diversified) >= limit:
+                    break
+        if not added_this_round:
+            break
+        round_index += 1
+    return diversified
 
 
 def _fetch_serpapi_candidates(query: str, query_meta: Dict[str, Any], max_results: int = 20) -> List[Dict[str, Any]]:
@@ -749,18 +872,19 @@ def _fetch_kaggle_candidates(query: str, query_meta: Dict[str, Any], max_results
 
 async def _fetch_broader_web_candidates(query: str, query_meta: Dict[str, Any], sessions: Dict[str, Any]) -> List[Dict[str, Any]]:
     async_calls = [
+        _fetch_tavily_candidates(query, query_meta, sessions, 20),
         asyncio.to_thread(_fetch_serpapi_candidates, query, query_meta, 20),
         asyncio.to_thread(_fetch_x_candidates, query, query_meta, 20),
         asyncio.to_thread(_fetch_kaggle_candidates, query, query_meta, 20),
         _call_tool_with_timeout(sessions, "@echolab/mcp-reddit", "fetch_reddit_posts_with_comments", {"subreddit": "startups", "limit": 10}, "Reddit"),
     ]
-    serp_candidates, x_candidates, kaggle_candidates, reddit_result = await asyncio.gather(
+    tavily_candidates, serp_candidates, x_candidates, kaggle_candidates, reddit_result = await asyncio.gather(
         *async_calls,
         return_exceptions=True,
     )
 
     candidates: List[Dict[str, Any]] = []
-    for payload in (serp_candidates, x_candidates, kaggle_candidates):
+    for payload in (tavily_candidates, serp_candidates, x_candidates, kaggle_candidates):
         if isinstance(payload, list):
             candidates.extend(payload)
 
@@ -778,17 +902,7 @@ async def _fetch_broader_web_candidates(query: str, query_meta: Dict[str, Any], 
                 candidate["primary_platform"] = "Reddit"
                 candidates.append(candidate)
 
-    unique: List[Dict[str, Any]] = []
-    seen = set()
-    for candidate in sorted(candidates, key=lambda item: item["match_score"], reverse=True):
-        key = (candidate.get("name"), candidate.get("primary_platform"))
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(candidate)
-        if len(unique) >= 30:
-            break
-    return unique
+    return _diversify_ranked_candidates(candidates, limit=30, nonce=uuid.uuid4().hex)
 
 
 def _cache_get(query: str) -> Optional[Dict[str, Any]]:
@@ -1118,6 +1232,13 @@ async def founder_talent_scout_search(payload: FounderScoutRequest, request: Req
             data_source = "live_unavailable"
 
         architecture = _founder_architecture_payload(query, query_meta)
+        architecture["architecture"]["data_sources"] = [
+            "GitHub APIs and repository metadata",
+            "Tavily web discovery across GitHub, LeetCode, Kaggle, GitLab, Hugging Face, blogs, and creator pages",
+            "X API or approved ingestion pipelines for public profile and discussion signals",
+            "Crawled personal websites, newsletters, and portfolio proof",
+            "Private recruiter feedback loop and founder interaction outcomes",
+        ]
         return {
             "query": query,
             "query_interpretation": {
