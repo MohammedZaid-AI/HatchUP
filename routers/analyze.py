@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from src.analyzer import PitchDeckAnalyzer
 from src.auth import require_user_id
 from src.document_parser import DocumentParser
+from src.env_utils import normalize_secret
 from src.services.analysis_service import AnalysisService
 from src.session import get_active_analysis_id, set_active_analysis_id
 
@@ -34,7 +35,8 @@ def get_authenticated_user_id(request: Request) -> str:
 
 @router.post("/api/analyze")
 async def analyze_deck(request: Request, response: Response, file: UploadFile = File(...)):
-    if not os.environ.get("GROQ_API_KEY"):
+    groq_api_key = normalize_secret(os.environ.get("GROQ_API_KEY"))
+    if not groq_api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
 
     try:
@@ -68,7 +70,7 @@ async def analyze_deck(request: Request, response: Response, file: UploadFile = 
                 raw_text = DocumentParser.parse_file(mock_file)
             
             # Extract Data
-            analyzer = PitchDeckAnalyzer(api_key=os.environ["GROQ_API_KEY"])
+            analyzer = PitchDeckAnalyzer(api_key=groq_api_key)
             deck_data = analyzer.analyze_pitch_deck(raw_text)
             user_id = get_authenticated_user_id(request)
             service = get_analysis_service()

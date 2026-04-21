@@ -2,15 +2,17 @@ from typing import Optional
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from src.env_utils import normalize_secret
 from src.models import PitchDeckData
 import os
 
 class PitchDeckAnalyzer:
     def __init__(self, api_key: str, model_name: str = "openai/gpt-oss-20b"):
+        cleaned_api_key = normalize_secret(api_key)
         self.llm = ChatGroq(
             temperature=0,
             model_name=model_name,
-            groq_api_key=api_key
+            groq_api_key=cleaned_api_key
         )
 
     def analyze_pitch_deck(self, deck_text: str) -> PitchDeckData:

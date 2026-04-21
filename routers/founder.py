@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from src.auth import require_user_id
 from src.document_parser import DocumentParser
+from src.env_utils import normalize_secret
 from src.revenue_wedge_engine import RevenueWedgeEngine
 from src.services.founder_workspace_service import FounderWorkspaceService
 
@@ -100,7 +101,7 @@ def get_founder_workspace_service() -> FounderWorkspaceService:
 
 @lru_cache(maxsize=1)
 def get_revenue_wedge_engine() -> RevenueWedgeEngine:
-    return RevenueWedgeEngine(api_key=os.environ.get("GROQ_API_KEY"))
+    return RevenueWedgeEngine(api_key=normalize_secret(os.environ.get("GROQ_API_KEY")))
 
 
 class RevenueRunRequest(BaseModel):

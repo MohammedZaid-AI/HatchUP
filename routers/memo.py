@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Response, HTTPException, Request
 from functools import lru_cache
 from src.models import PitchDeckData, InvestmentMemo, ExecutiveSummary
 from src.auth import require_user_id
+from src.env_utils import normalize_secret
 from src.memo_generator import MemoGenerator
 from src.exporter import Exporter
 from src.services.analysis_service import AnalysisService
@@ -25,7 +26,7 @@ async def generate_memo_endpoint(request: Request, response: Response, data: Pit
     Generates an investment memo and executive summary from pitch deck data.
     """
     try:
-        api_key = os.environ.get("GROQ_API_KEY")
+        api_key = normalize_secret(os.environ.get("GROQ_API_KEY"))
         if not api_key:
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not found in environment variables.")
 
