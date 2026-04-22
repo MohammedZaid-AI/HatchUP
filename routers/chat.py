@@ -8,9 +8,12 @@ import json
 import asyncio
 import hashlib
 import logging
+import random
 import re
 import time
 import uuid
+from datetime import datetime, timezone
+from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 from src.auth import require_user_id
@@ -36,7 +39,15 @@ GITHUB_TIMEOUT_SECONDS = 8
 SERPAPI_BASE = "https://serpapi.com/search.json"
 X_API_BASE = "https://api.x.com/2"
 KAGGLE_API_BASE = "https://www.kaggle.com/api/v1"
+TAVILY_API_BASE = "https://api.tavily.com/search"
+STACKEXCHANGE_API_BASE = "https://api.stackexchange.com/2.3"
 EXCLUDED_TALENT_SCOUT_DOMAINS = ("linkedin.com", "naukri.com")
+TALENT_SCOUT_TARGET_PLATFORMS = {"GitHub", "Stack Overflow", "Twitter (X)"}
+TALENT_SCOUT_PLATFORM_ORDER = ["GitHub", "Stack Overflow", "Twitter (X)"]
+TALENT_POOL_MEMORY_TTL_SECONDS = 60 * 60 * 6
+_talent_pool_seen_urls: Dict[str, Dict[str, float]] = {}
+_talent_pool_signatures: Dict[str, Dict[str, float]] = {}
+_talent_rng = random.SystemRandom()
 
 
 @lru_cache(maxsize=1)
@@ -125,6 +136,32 @@ def _sanitize_for_prompt(value: Any, max_chars: int = 2200) -> str:
     if len(text) > max_chars:
         return text[:max_chars] + " ... [TRUNCATED]"
     return text
+
+
+def _unwrap_tool_payload(payload: Any) -> Any:
+    if payload is None:
+        return None
+
+    structured = getattr(payload, "structuredContent", None)
+    if structured is not None:
+        return structured
+
+    content = getattr(payload, "content", None)
+    if isinstance(content, list) and content:
+        text_parts: List[str] = []
+        for item in content:
+            text_value = getattr(item, "text", None)
+            if text_value:
+                text_parts.append(text_value)
+        if text_parts:
+            joined = "\n".join(text_parts).strip()
+            if not joined:
+                return joined
+            try:
+                return json.loads(joined)
+            except Exception:
+                return joined
+    return payload
 
 
 FOUNDER_TALENT_PROFILES: List[Dict[str, Any]] = [
@@ -382,6 +419,47 @@ def _kaggle_auth() -> Any:
     return (username, key)
 
 
+def _stackexchange_params(extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "site": "stackoverflow",
+    }
+    api_key = (
+        (os.environ.get("STACKEXCHANGE_KEY") or "").strip()
+        or (os.environ.get("STACKOVERFLOW_KEY") or "").strip()
+        or (os.environ.get("STACK_APP_KEY") or "").strip()
+    )
+    if api_key:
+        params["key"] = api_key
+    if extra:
+        params.update(extra)
+    return params
+
+
+def _tavily_api_key() -> str:
+    api_key = (os.environ.get("TAVILY_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("TAVILY_API_KEY is not configured.")
+    return api_key
+
+
+def _tavily_search(query: str, max_results: int = 8, search_depth: str = "advanced") -> Any:
+    response = requests.post(
+        TAVILY_API_BASE,
+        json={
+            "api_key": _tavily_api_key(),
+            "query": query,
+            "max_results": max_results,
+            "search_depth": search_depth,
+            "include_answer": False,
+            "include_images": False,
+            "include_raw_content": False,
+        },
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def _extract_text_tokens(value: str) -> List[str]:
     return re.findall(r"[a-zA-Z0-9\-\+]+", (value or "").lower())
 
@@ -392,6 +470,32 @@ def _query_role_label(query_meta: Dict[str, Any], fallback: str) -> str:
         "growth": "Growth Operator",
         "product": "Product Builder",
     }.get(query_meta.get("inferred_role"), fallback)
+
+
+def _platform_query_variants(query: str, query_meta: Dict[str, Any], platform: str) -> List[str]:
+    normalized = (query or "").strip()
+    inferred_role = str(query_meta.get("inferred_role") or "")
+
+    role_fallbacks = {
+        "engineer": ["software engineer", "full stack developer", "backend engineer", "developer"],
+        "growth": ["developer advocate", "technical creator", "builder", "startup operator"],
+        "product": ["product engineer", "full stack developer", "indie hacker", "builder"],
+        "generalist": ["developer", "software engineer", "builder", "open source developer"],
+    }
+    generic = role_fallbacks.get(inferred_role, role_fallbacks["generalist"])
+
+    platform_specific = {
+        "GitHub": generic + ["open source developer", "maintainer"],
+        "Twitter (X)": [normalized, *generic, "building in public developer", "indie hacker developer", "ship fast developer", "ai builder"],
+        "Stack Overflow": [normalized, *generic, "python", "javascript"],
+    }
+
+    ordered: List[str] = []
+    for item in platform_specific.get(platform, [normalized, *generic]):
+        value = str(item or "").strip()
+        if value and value.lower() not in {existing.lower() for existing in ordered}:
+            ordered.append(value)
+    return ordered
 
 
 def _github_query_string(query: str, query_meta: Dict[str, Any]) -> str:
@@ -525,6 +629,12 @@ def _infer_platform_from_url(url: str) -> str:
     normalized = str(url or "").lower()
     if "github.com" in normalized:
         return "GitHub"
+    if "stackoverflow.com" in normalized or "stackexchange.com" in normalized:
+        return "Stack Overflow"
+    if "huggingface.co" in normalized:
+        return "Hugging Face"
+    if "devpost.com" in normalized:
+        return "Devpost"
     if "x.com" in normalized or "twitter.com" in normalized:
         return "Tech Twitter"
     if "kaggle.com" in normalized:
@@ -578,6 +688,12 @@ def _web_candidate_from_result(query_meta: Dict[str, Any], item: Dict[str, Any])
         base_score += 7
     elif platform == "GitHub":
         base_score += 10
+    elif platform == "Stack Overflow":
+        base_score += 9
+    elif platform == "Hugging Face":
+        base_score += 9
+    elif platform == "Devpost":
+        base_score += 8
     elif platform == "Kaggle":
         base_score += 8
     elif platform == "LeetCode":
@@ -674,21 +790,16 @@ def _tavily_candidate_from_result(query_meta: Dict[str, Any], item: Dict[str, An
     return candidate
 
 
-async def _fetch_tavily_candidates(query: str, query_meta: Dict[str, Any], sessions: Dict[str, Any], max_results: int = 20) -> List[Dict[str, Any]]:
+async def _fetch_tavily_candidates(query: str, query_meta: Dict[str, Any], max_results: int = 20) -> List[Dict[str, Any]]:
     tavily_query = (
-        f'{query} (site:github.com OR site:leetcode.com OR site:kaggle.com OR '
+        f'{query} (site:github.com OR site:leetcode.com OR '
         f'site:codeforces.com OR site:dev.to OR site:medium.com OR site:substack.com OR '
-        f'site:huggingface.co OR site:gitlab.com OR site:x.com) '
+        f'site:gitlab.com OR site:x.com) '
         f'-site:linkedin.com -site:naukri.com'
     )
-    payload = await _call_tool_with_timeout(
-        sessions,
-        "@tavily/mcp-server",
-        "tavily",
-        {"query": tavily_query},
-        "Tavily",
-    )
-    if isinstance(payload, Exception) or (isinstance(payload, str) and payload.startswith("[Tavily MCP Error:")):
+    try:
+        payload = await asyncio.to_thread(_tavily_search, tavily_query, max_results, "advanced")
+    except Exception:
         return []
 
     candidates: List[Dict[str, Any]] = []
@@ -870,9 +981,62 @@ def _fetch_kaggle_candidates(query: str, query_meta: Dict[str, Any], max_results
     return candidates
 
 
+def _fetch_stackoverflow_candidates(query: str, query_meta: Dict[str, Any], max_results: int = 20) -> List[Dict[str, Any]]:
+    response = requests.get(
+        f"{STACKEXCHANGE_API_BASE}/users",
+        params=_stackexchange_params(
+            {
+                "inname": query,
+                "pagesize": max_results,
+                "order": "desc",
+                "sort": "reputation",
+            }
+        ),
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    items = payload.get("items") or []
+    candidates: List[Dict[str, Any]] = []
+    for item in items[:max_results]:
+        display_name = str(item.get("display_name") or "Stack Overflow User")
+        user_id = item.get("user_id")
+        location = str(item.get("location") or "Stack Overflow")
+        reputation = int(item.get("reputation") or 0)
+        badge_counts = item.get("badge_counts") or {}
+        gold = int(badge_counts.get("gold") or 0)
+        silver = int(badge_counts.get("silver") or 0)
+        bronze = int(badge_counts.get("bronze") or 0)
+        searchable = f"{display_name} {location} {query}".lower()
+        overlap = [token for token in query_meta.get("tokens", set()) if token in searchable]
+        candidates.append({
+            "name": display_name,
+            "role": _query_role_label(query_meta, "Stack Overflow Candidate"),
+            "location": location,
+            "primary_platform": "Stack Overflow",
+            "profile_url": str(item.get("link") or (f"https://stackoverflow.com/users/{user_id}" if user_id else "https://stackoverflow.com/users")),
+            "tags": list(dict.fromkeys(overlap[:4] + ["stack-overflow", "reputation", "answers"])),
+            "match_score": round((58 + min(18, len(overlap) * 7)) * 0.42 + min(90, 60 + min(18, gold * 6 + silver * 2)) * 0.24 + min(100, 52 + min(36, reputation // 250)) * 0.22 + min(92, 48 + min(22, bronze // 15 + silver // 8)) * 0.12),
+            "startup_fit_score": min(90, 60 + min(18, gold * 6 + silver * 2)),
+            "credibility_score": min(100, 52 + min(36, reputation // 250)),
+            "visibility_score": min(92, 48 + min(22, bronze // 15 + silver // 8)),
+            "why_matched": [
+                "Directly sourced from Stack Overflow user search",
+                f"Reputation signal: {reputation} with badges G{gold}/S{silver}/B{bronze}",
+                "Strong signal for answer quality, debugging depth, and technical communication",
+            ],
+            "summary": f"Stack Overflow profile with reputation {reputation} and badge mix G{gold}/S{silver}/B{bronze}.",
+            "outreach_message": (
+                f"Hi {display_name.split()[0]}, your Stack Overflow profile stood out in our talent search for {query}. "
+                "We are building through HatchUp and would love to connect if startup work is of interest."
+            ),
+        })
+    return candidates
+
+
 async def _fetch_broader_web_candidates(query: str, query_meta: Dict[str, Any], sessions: Dict[str, Any]) -> List[Dict[str, Any]]:
     async_calls = [
-        _fetch_tavily_candidates(query, query_meta, sessions, 20),
+        _fetch_tavily_candidates(query, query_meta, 20),
         asyncio.to_thread(_fetch_serpapi_candidates, query, query_meta, 20),
         asyncio.to_thread(_fetch_x_candidates, query, query_meta, 20),
         asyncio.to_thread(_fetch_kaggle_candidates, query, query_meta, 20),
@@ -986,7 +1150,6 @@ async def get_mcp_sessions():
         "wiki": base_dir / "mcp_wiki" / "server.py",
         "google": base_dir / "mcp_google" / "server.py",
         "medium": base_dir / "mcp_medium" / "server.py",
-        "tavily": base_dir / "mcp_tavily" / "server.py",
     }
     for name, path in mcp_dirs.items():
         if not path.exists():
@@ -998,7 +1161,6 @@ async def get_mcp_sessions():
             "@echolab/mcp-wikipedia": {"command": sys.executable, "args": [str(mcp_dirs["wiki"])]},
             "@echolab/mcp-google": {"command": sys.executable, "args": [str(mcp_dirs["google"])]},
             "@echolab/mcp-medium": {"command": sys.executable, "args": [str(mcp_dirs["medium"])]},
-            "@tavily/mcp-server": {"command": sys.executable, "args": [str(mcp_dirs["tavily"])]},
         }
     }
 
@@ -1021,10 +1183,11 @@ async def _call_tool_with_timeout(
     if session_name not in sessions:
         return f"[{label} MCP Error: session unavailable]"
     try:
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             sessions[session_name].call_tool(tool_name, args),
             timeout=MCP_CALL_TIMEOUT_SECONDS,
         )
+        return _unwrap_tool_payload(result)
     except asyncio.TimeoutError:
         return f"[{label} MCP Error: timeout]"
     except Exception as exc:
@@ -1041,15 +1204,20 @@ async def run_searches(query: str, sessions: Dict[str, Any]) -> Dict[str, Any]:
         ("wiki", "@echolab/mcp-wikipedia", "search", {"query": query}, "Wikipedia"),
         ("google", "@echolab/mcp-google", "google_search", {"query": query}, "Google"),
         ("medium", "@echolab/mcp-medium", "search_medium", {"query": query}, "Medium"),
-        ("tavily", "@tavily/mcp-server", "tavily", {"query": query}, "Tavily"),
     ]
 
     tasks = [
         _call_tool_with_timeout(sessions, session, tool, args, label)
         for _, session, tool, args, label in specs
     ]
-    values = await asyncio.gather(*tasks, return_exceptions=False)
-    results = {specs[idx][0]: values[idx] for idx in range(len(specs))}
+    tasks.append(asyncio.to_thread(_tavily_search, query, 8, "advanced"))
+    values = await asyncio.gather(*tasks, return_exceptions=True)
+    results = {}
+    for idx, spec in enumerate(specs):
+        value = values[idx]
+        results[spec[0]] = value if not isinstance(value, Exception) else f"[{spec[4]} Error: {_error_text(value)}]"
+    tavily_value = values[-1]
+    results["tavily"] = tavily_value if not isinstance(tavily_value, Exception) else f"[Tavily Error: {_error_text(tavily_value)}]"
     _cache_set(query, results)
     return results
 
@@ -1064,6 +1232,1212 @@ def build_context_string(results: Dict[str, Any]) -> str:
         f"[Tavily]: {_sanitize_for_prompt(results.get('tavily'))}\n"
         "----------------------"
     )
+
+
+ALTERNATIVE_PLATFORM_CONFIGS: List[Dict[str, Any]] = [
+    {
+        "platform": "GitLab",
+        "domains": ["gitlab.com"],
+        "category": "code_repo",
+        "role_hints": ["backend", "devops", "systems"],
+        "skills": ["gitlab", "ci-cd", "devops", "backend"],
+    },
+    {
+        "platform": "Bitbucket",
+        "domains": ["bitbucket.org"],
+        "category": "code_repo",
+        "role_hints": ["backend", "full-stack", "infra"],
+        "skills": ["bitbucket", "repositories", "apis", "delivery"],
+    },
+    {
+        "platform": "Codeberg",
+        "domains": ["codeberg.org"],
+        "category": "code_repo",
+        "role_hints": ["systems", "backend", "open-source"],
+        "skills": ["open-source", "git", "backend", "systems"],
+    },
+    {
+        "platform": "CodePen",
+        "domains": ["codepen.io"],
+        "category": "live_ui",
+        "role_hints": ["frontend", "ui", "animation"],
+        "skills": ["html", "css", "javascript", "animation"],
+    },
+    {
+        "platform": "Dribbble",
+        "domains": ["dribbble.com"],
+        "category": "live_ui",
+        "role_hints": ["frontend", "ux", "design-engineering"],
+        "skills": ["design-systems", "ui", "ux", "prototyping"],
+    },
+    {
+        "platform": "Frontend Mentor",
+        "domains": ["frontendmentor.io"],
+        "category": "live_ui",
+        "role_hints": ["frontend", "full-stack", "accessibility"],
+        "skills": ["frontend", "react", "css", "accessibility"],
+    },
+    {
+        "platform": "Devpost",
+        "domains": ["devpost.com"],
+        "category": "live_ui",
+        "role_hints": ["full-stack", "ai", "builder"],
+        "skills": ["hackathons", "prototypes", "full-stack", "shipping"],
+    },
+    {
+        "platform": "Hugging Face",
+        "domains": ["huggingface.co"],
+        "category": "code_repo",
+        "role_hints": ["ai", "ml", "research"],
+        "skills": ["models", "datasets", "spaces", "llm"],
+    },
+    {
+        "platform": "Behance",
+        "domains": ["behance.net"],
+        "category": "live_ui",
+        "role_hints": ["frontend", "creative", "product"],
+        "skills": ["portfolio", "branding", "ux", "interaction"],
+    },
+    {
+        "platform": "Codeforces",
+        "domains": ["codeforces.com"],
+        "category": "competitive",
+        "role_hints": ["systems", "algorithms", "backend"],
+        "skills": ["algorithms", "competitive-programming", "c++", "problem-solving"],
+    },
+    {
+        "platform": "Topcoder",
+        "domains": ["topcoder.com"],
+        "category": "competitive",
+        "role_hints": ["algorithms", "backend", "systems"],
+        "skills": ["competitions", "algorithms", "problem-solving", "delivery"],
+    },
+    {
+        "platform": "HackerRank",
+        "domains": ["hackerrank.com"],
+        "category": "competitive",
+        "role_hints": ["backend", "full-stack", "algorithms"],
+        "skills": ["hackerrank", "badges", "coding-tests", "problem-solving"],
+    },
+    {
+        "platform": "Stack Overflow",
+        "domains": ["stackoverflow.com"],
+        "category": "content",
+        "role_hints": ["backend", "full-stack", "systems"],
+        "skills": ["answers", "debugging", "reputation", "mentoring"],
+    },
+    {
+        "platform": "Dev.to",
+        "domains": ["dev.to"],
+        "category": "content",
+        "role_hints": ["full-stack", "backend", "frontend"],
+        "skills": ["technical-writing", "developer-relations", "shipping", "architecture"],
+    },
+    {
+        "platform": "Hashnode",
+        "domains": ["hashnode.com"],
+        "category": "content",
+        "role_hints": ["ai", "backend", "full-stack"],
+        "skills": ["technical-writing", "engineering", "architecture", "community"],
+    },
+    {
+        "platform": "Stack Exchange",
+        "domains": ["stackexchange.com", "superuser.com", "serverfault.com"],
+        "category": "content",
+        "role_hints": ["systems", "backend", "infra"],
+        "skills": ["community", "answers", "troubleshooting", "ops"],
+    },
+]
+
+DISCOVERY_STRATEGIES: List[Dict[str, str]] = [
+    {"name": "trending", "hint": "trending active recently featured"},
+    {"name": "high_reputation", "hint": "top profile high reputation strong public work"},
+    {"name": "underrated", "hint": "underrated hidden gem low followers high quality"},
+]
+
+ROLE_TAG_ORDER = ["AI/ML", "Backend", "Frontend", "Full-stack", "Systems / low-level"]
+EXPERIENCE_LEVEL_ORDER = ["beginner", "intermediate", "advanced"]
+
+
+def _build_alternative_discovery_query(query: str, query_meta: Dict[str, Any], config: Dict[str, Any], strategy: Dict[str, str]) -> str:
+    query_focus = query.strip() or "developer"
+    role_terms = " ".join(config.get("role_hints", [])[:3])
+    skill_terms = " ".join(config.get("skills", [])[:3])
+    stage_hint = "early stage builder" if query_meta.get("startup_stage") == "early-stage" else "public developer profile"
+    domain_clause = " OR ".join(f"site:{domain}" for domain in config.get("domains", []))
+    return (
+        f"{query_focus} ({domain_clause}) {config['platform']} {role_terms} {skill_terms} "
+        f"{strategy['hint']} {stage_hint} profile portfolio user engineer developer designer builder "
+        "-site:github.com -site:medium.com -site:leetcode.com -site:linkedin.com -site:naukri.com"
+    )
+
+
+def _url_matches_domains(url: str, domains: List[str]) -> bool:
+    normalized = str(url or "").lower()
+    return any(domain in normalized for domain in domains)
+
+
+def _candidate_name_from_link(title: str, link: str, platform: str) -> str:
+    cleaned_title = title.split(" | ")[0].split(" - ")[0].strip()
+    if cleaned_title and cleaned_title.lower() != platform.lower():
+        return cleaned_title[:80]
+    try:
+        parsed = urlparse(link)
+        parts = [part for part in parsed.path.split("/") if part]
+        if parts:
+            candidate = parts[-1].replace("-", " ").replace("_", " ").strip()
+            if candidate:
+                return candidate.title()[:80]
+    except Exception:
+        pass
+    return platform
+
+
+def _looks_like_profile_url(link: str, platform: str) -> bool:
+    normalized = str(link or "").lower()
+    parsed = urlparse(normalized)
+    parts = [part for part in parsed.path.split("/") if part]
+    if not parts:
+        return False
+
+    generic_segments = {
+        "blog", "blogs", "posts", "article", "articles", "tag", "tags", "topics", "topic",
+        "search", "discover", "explore", "collections", "jobs", "pricing", "about", "docs",
+        "guides", "help", "challenges", "roadmap", "features", "community",
+    }
+    if any(part in generic_segments for part in parts):
+        return False
+
+    if platform in {"Codeforces", "Topcoder", "HackerRank"}:
+        return any(token in normalized for token in ("/profile", "/profiles", "/user", "/users", "/members", "/u/"))
+    if platform in {"Stack Overflow", "Stack Exchange"}:
+        return any(token in normalized for token in ("/users/", "/members/"))
+    if platform in {"Dev.to", "Hashnode"}:
+        return len(parts) >= 1 and parts[0] not in generic_segments
+    return len(parts) >= 1
+
+
+def _infer_role_tag_from_text(text: str, platform: str, query_meta: Dict[str, Any]) -> str:
+    lowered = (text or "").lower()
+    if any(token in lowered for token in ("machine learning", "ml", "ai ", "llm", "computer vision", "deep learning", "rag", "hugging face")):
+        return "AI/ML"
+    if platform in {"CodePen", "Dribbble", "Frontend Mentor", "Behance"} or any(token in lowered for token in ("frontend", "ui", "ux", "css", "animation", "design system", "accessibility")):
+        return "Frontend"
+    if platform in {"Codeforces", "Topcoder", "Stack Exchange"} or any(token in lowered for token in ("compiler", "kernel", "systems", "embedded", "c++", "rust", "linux", "distributed systems", "networking", "low-level")):
+        return "Systems / low-level"
+    if any(token in lowered for token in ("full stack", "full-stack", "product engineer", "builder", "prototype", "hackathon")):
+        return "Full-stack"
+    if any(token in lowered for token in ("backend", "api", "golang", "python", "java", "database", "platform", "devops", "infra")):
+        return "Backend"
+    inferred = query_meta.get("inferred_role")
+    if inferred == "engineer":
+        return "Backend"
+    if inferred == "product":
+        return "Full-stack"
+    return _talent_rng.choice(ROLE_TAG_ORDER)
+
+
+def _infer_experience_level(text: str, score_hint: int) -> str:
+    lowered = (text or "").lower()
+    if any(token in lowered for token in ("student", "junior", "beginner", "new grad", "learner", "bootcamp")):
+        return "beginner"
+    if any(token in lowered for token in ("staff", "principal", "lead", "expert", "winner", "top", "mentor", "maintainer")) or score_hint >= 85:
+        return "advanced"
+    return "intermediate"
+
+
+def _extract_candidate_skills(text: str, config: Dict[str, Any], role_tag: str) -> List[str]:
+    lowered = (text or "").lower()
+    keywords = [
+        "python", "golang", "java", "rust", "c++", "typescript", "javascript", "react", "node",
+        "docker", "kubernetes", "aws", "ml", "llm", "rag", "css", "animation", "ux", "api",
+        "devops", "algorithms", "competitive-programming", "design-systems", "accessibility",
+    ]
+    found = [keyword for keyword in keywords if keyword in lowered]
+    seed = list(config.get("skills", []))
+    if role_tag == "AI/ML":
+        seed = ["ml", "llm", "python", "experimentation"] + seed
+    elif role_tag == "Frontend":
+        seed = ["frontend", "ui", "css", "accessibility"] + seed
+    elif role_tag == "Systems / low-level":
+        seed = ["systems", "algorithms", "c++", "performance"] + seed
+    elif role_tag == "Full-stack":
+        seed = ["full-stack", "product", "shipping", "javascript"] + seed
+    else:
+        seed = ["backend", "apis", "devops", "delivery"] + seed
+    return list(dict.fromkeys(found + seed))[:6]
+
+
+def _score_alt_candidate(platform: str, category: str, text: str, strategy_name: str) -> Dict[str, int]:
+    lowered = (text or "").lower()
+    tech_skill = 16
+    real_projects = 12
+    problem_solving = 8
+    communication = 5
+    consistency = 4
+
+    if category == "code_repo":
+        tech_skill += 8
+        real_projects += 8
+        consistency += 2
+    elif category == "live_ui":
+        tech_skill += 6
+        real_projects += 7
+        communication += 2
+    elif category == "competitive":
+        tech_skill += 7
+        problem_solving += 9
+    elif category == "content":
+        communication += 6
+        consistency += 2
+
+    if any(token in lowered for token in ("active", "recent", "ongoing", "daily", "weekly", "maintains", "maintainer", "consistent")):
+        consistency += 3
+    if any(token in lowered for token in ("project", "repository", "portfolio", "demo", "prototype", "case study", "open source", "ci/cd", "deployment")):
+        real_projects += 4
+    if any(token in lowered for token in ("contest", "rank", "badge", "reputation", "accepted answer", "winner", "algorithm", "problem solving")):
+        problem_solving += 4
+    if any(token in lowered for token in ("write", "article", "explains", "answer", "tutorial", "blog", "discussion", "mentor")):
+        communication += 3
+    if any(token in lowered for token in ("ai", "ml", "backend", "frontend", "systems", "full stack", "full-stack", "devops", "ux")):
+        tech_skill += 3
+
+    if strategy_name == "high_reputation":
+        tech_skill += 2
+        problem_solving += 2
+        communication += 1
+    elif strategy_name == "trending":
+        real_projects += 2
+        consistency += 2
+    elif strategy_name == "underrated":
+        real_projects += 1
+        consistency += 1
+
+    breakdown = {
+        "technical_skill": max(0, min(30, tech_skill)),
+        "real_projects": max(0, min(25, real_projects)),
+        "problem_solving": max(0, min(20, problem_solving)),
+        "communication": max(0, min(15, communication)),
+        "consistency": max(0, min(10, consistency)),
+    }
+    breakdown["total"] = sum(breakdown.values())
+    return breakdown
+
+
+def _platform_specific_signals(platform: str, snippet: str, strategy_name: str, experience_level: str) -> Dict[str, str]:
+    lowered = (snippet or "").lower()
+    if platform == "GitHub":
+        return {
+            "projects": "Repository depth, language mix, and maintainer activity indicate strong real-world building.",
+            "problem_solving": "Open-source contribution patterns and repo complexity suggest strong engineering judgment.",
+            "communication": "Issues, PR context, and public repo descriptions show how clearly they communicate technical work.",
+        }
+    if platform in {"Tech Twitter", "X"}:
+        return {
+            "projects": "Public shipping notes and technical threads indicate current work and builder momentum.",
+            "problem_solving": "Topic overlap and technical posting history suggest practical product and engineering reasoning.",
+            "communication": "Thread quality and profile clarity are strong public communication signals.",
+        }
+    if platform == "Kaggle":
+        return {
+            "projects": "Competition and notebook history suggest hands-on experimentation and applied ML work.",
+            "problem_solving": "Kaggle profile signals are strong for iterative problem solving and model evaluation.",
+            "communication": "Notebook context and public profile quality give moderate communication evidence.",
+        }
+    if platform in {"GitLab", "Bitbucket", "Codeberg"}:
+        return {
+            "projects": f"Repository activity and delivery traces point to hands-on shipping, with likely DevOps exposure across {platform}.",
+            "problem_solving": "Commit history, repo topics, and engineering context suggest practical debugging and systems thinking.",
+            "communication": "Public project descriptions and contribution notes indicate how clearly they document technical work.",
+        }
+    if platform in {"CodePen", "Dribbble", "Frontend Mentor", "Behance", "Devpost"}:
+        return {
+            "projects": f"Public UI work on {platform} suggests creative execution, interaction quality, and visible product polish.",
+            "problem_solving": "Design-to-code choices imply strong implementation judgment, especially on UX details and iteration speed.",
+            "communication": "The work is legible from demos, portfolio context, and presentation quality.",
+        }
+    if platform in {"Codeforces", "Topcoder", "HackerRank"}:
+        return {
+            "projects": f"{platform} adds evidence of technical rigor even when project history is lighter in the public snippet.",
+            "problem_solving": "Contest performance, badges, or ranking language suggests algorithmic strength under pressure.",
+            "communication": "Public competitive profiles provide lighter communication evidence, so this is weighted below technical depth.",
+        }
+    if platform in {"Stack Overflow", "Stack Exchange"}:
+        return {
+            "projects": "Public answers indicate practical debugging breadth and real-world exposure to recurring engineering issues.",
+            "problem_solving": "Reputation and accepted-answer style signals point to repeatable troubleshooting skill.",
+            "communication": "Answer quality is a direct signal for clarity, teaching ability, and technical empathy.",
+        }
+    return {
+        "projects": f"{platform} shows concrete public work with enough context to assess execution quality.",
+        "problem_solving": "Public technical output suggests usable reasoning and implementation ability.",
+        "communication": "Writing quality and signal density imply they can explain technical ideas clearly.",
+    }
+
+
+def _candidate_tag_for_profile(platform: str, strategy_name: str, score_breakdown: Dict[str, int]) -> str:
+    if strategy_name == "underrated":
+        return "Hidden Gem"
+    if platform in {"CodePen", "Dribbble", "Frontend Mentor", "Behance", "Devpost"}:
+        return "Creative Hacker"
+    if score_breakdown.get("consistency", 0) >= 8:
+        return "Consistent Builder"
+    return "Top Performer"
+
+
+def _normalize_direct_api_candidate(candidate: Dict[str, Any], query_meta: Dict[str, Any], source_label: str) -> Dict[str, Any]:
+    platform = str(candidate.get("primary_platform") or source_label or "Web")
+    summary = str(candidate.get("summary") or "").strip()
+    why_matched = candidate.get("why_matched") or []
+    searchable = " ".join(
+        [
+            str(candidate.get("name") or ""),
+            str(candidate.get("role") or ""),
+            str(candidate.get("location") or ""),
+            " ".join(str(tag) for tag in (candidate.get("tags") or [])),
+            summary,
+            " ".join(str(item) for item in why_matched),
+            platform,
+        ]
+    ).lower()
+    role_tag = _infer_role_tag_from_text(searchable, platform, query_meta)
+    skills = list(dict.fromkeys(
+        [str(tag) for tag in (candidate.get("tags") or []) if tag]
+        + _extract_candidate_skills(searchable, {"skills": candidate.get("tags") or []}, role_tag)
+    ))[:6]
+
+    technical_skill = min(30, 14 + int(candidate.get("credibility_score") or 0) // 5)
+    real_projects = min(25, 10 + int(candidate.get("startup_fit_score") or 0) // 6)
+    problem_solving = min(20, 8 + int(candidate.get("match_score") or 0) // 7)
+    communication = min(15, 6 + len(why_matched))
+    consistency = min(10, 4 + int(candidate.get("visibility_score") or 0) // 15)
+    score = technical_skill + real_projects + problem_solving + communication + consistency
+    score_breakdown = {
+        "technical_skill": technical_skill,
+        "real_projects": real_projects,
+        "problem_solving": problem_solving,
+        "communication": communication,
+        "consistency": consistency,
+        "total": score,
+    }
+
+    return {
+        "name": str(candidate.get("name") or platform),
+        "platform": platform,
+        "profile_url": str(candidate.get("profile_url") or ""),
+        "role_tag": role_tag,
+        "experience_level": _infer_experience_level(searchable, score),
+        "skills": skills,
+        "signals": _platform_specific_signals(platform, summary, "high_reputation", "intermediate"),
+        "summary": summary or f"Public {platform} profile surfaced from direct API search.",
+        "score": min(100, score),
+        "score_breakdown": score_breakdown,
+        "why_this_candidate": str(why_matched[0] if why_matched else f"Strong direct API signal from {platform}."),
+        "candidate_tag": _candidate_tag_for_profile(platform, "high_reputation", score_breakdown),
+        "selection_strategy": "api_direct",
+        "matched_terms": list(candidate.get("tags") or [])[:4],
+    }
+
+
+def _alternative_candidate_from_result(
+    query_meta: Dict[str, Any],
+    item: Dict[str, Any],
+    config: Dict[str, Any],
+    strategy: Dict[str, str],
+) -> Optional[Dict[str, Any]]:
+    title = str(item.get("title") or item.get("name") or "").strip()
+    link = str(item.get("link") or item.get("url") or "").strip()
+    snippet = str(item.get("snippet") or item.get("content") or item.get("body") or "").strip()
+    if not link or _is_excluded_talent_source(link):
+        return None
+    if not _url_matches_domains(link, config.get("domains", [])):
+        return None
+    searchable = " ".join([title, snippet, link, config["platform"]]).lower()
+    overlap = [token for token in query_meta.get("tokens", set()) if token in searchable]
+    looks_like_profile = _looks_like_profile_url(link, config["platform"])
+    if query_meta.get("tokens") and not overlap and config["category"] not in {"competitive", "live_ui"} and not looks_like_profile:
+        return None
+
+    role_tag = _infer_role_tag_from_text(searchable, config["platform"], query_meta)
+    score_breakdown = _score_alt_candidate(config["platform"], config["category"], searchable, strategy["name"])
+    if looks_like_profile and not overlap:
+        score_breakdown["total"] = min(100, score_breakdown["total"] + 4)
+    experience_level = _infer_experience_level(searchable, score_breakdown["total"])
+    name = _candidate_name_from_link(title, link, config["platform"])
+    skills = _extract_candidate_skills(searchable, config, role_tag)
+    candidate_tag = _candidate_tag_for_profile(config["platform"], strategy["name"], score_breakdown)
+
+    return {
+        "name": name,
+        "platform": config["platform"],
+        "profile_url": link,
+        "role_tag": role_tag,
+        "experience_level": experience_level,
+        "skills": skills,
+        "signals": _platform_specific_signals(config["platform"], snippet, strategy["name"], experience_level),
+        "summary": (snippet[:260] or f"Public {config['platform']} profile surfaced for this talent search.").strip(),
+        "score": score_breakdown["total"],
+        "score_breakdown": score_breakdown,
+        "why_this_candidate": (
+            f"{config['platform']} surfaced strong {strategy['name'].replace('_', ' ')} evidence with visible {role_tag.lower()} signal."
+        ),
+        "candidate_tag": candidate_tag,
+        "selection_strategy": strategy["name"],
+        "matched_terms": overlap[:4],
+    }
+
+
+async def _run_alternative_platform_search(
+    query: str,
+    query_meta: Dict[str, Any],
+    sessions: Dict[str, Any],
+    config: Dict[str, Any],
+    strategy: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    search_query = _build_alternative_discovery_query(query, query_meta, config, strategy)
+    tavily_task = asyncio.to_thread(_tavily_search, search_query, 8, "advanced")
+    google_task = _call_tool_with_timeout(
+        sessions,
+        "@echolab/mcp-google",
+        "google_search",
+        {"query": search_query, "num_results": 5},
+        "Google",
+    )
+    tavily_payload, google_payload = await asyncio.gather(tavily_task, google_task, return_exceptions=True)
+
+    items: List[Dict[str, Any]] = []
+    if not isinstance(tavily_payload, Exception):
+        items.extend(_extract_tavily_items(tavily_payload))
+    if not isinstance(google_payload, Exception):
+        items.extend(_extract_search_items(google_payload))
+
+    candidates: List[Dict[str, Any]] = []
+    for item in items:
+        candidate = _alternative_candidate_from_result(query_meta, item, config, strategy)
+        if candidate:
+            candidates.append(candidate)
+    return candidates
+
+
+async def _fetch_platform_web_fallback_candidates(
+    platform: str,
+    query: str,
+    query_meta: Dict[str, Any],
+    max_results: int = 12,
+) -> List[Dict[str, Any]]:
+    if platform == "Twitter (X)":
+        search_query = f'({query}) (site:x.com OR site:twitter.com) developer engineer builder -site:linkedin.com'
+    elif platform == "GitHub":
+        search_query = f'({query}) site:github.com developer engineer -site:linkedin.com'
+    elif platform == "Stack Overflow":
+        search_query = f'({query}) site:stackoverflow.com/users developer engineer -site:linkedin.com'
+    else:
+        return []
+
+    items: List[Dict[str, Any]] = []
+    try:
+        tavily_payload = await asyncio.to_thread(_tavily_search, search_query, max_results, "advanced")
+        items.extend(_extract_tavily_items(tavily_payload))
+    except Exception:
+        logger.warning("%s Tavily fallback fetch failed", platform)
+
+    try:
+        serp_items = _fetch_serpapi_candidates(query, query_meta, max_results)
+        for item in serp_items:
+            if _canonical_platform_label(str(item.get("primary_platform") or "")) == platform:
+                items.append(
+                    {
+                        "title": item.get("name"),
+                        "link": item.get("profile_url"),
+                        "snippet": item.get("summary"),
+                    }
+                )
+    except Exception:
+        logger.warning("%s SerpAPI fallback fetch failed", platform)
+
+    candidates: List[Dict[str, Any]] = []
+    for item in items:
+        candidate = _web_candidate_from_result(query_meta, item)
+        if not candidate:
+            continue
+        candidate_platform = _canonical_platform_label(str(candidate.get("primary_platform") or ""))
+        if candidate_platform != platform:
+            continue
+        candidates.append(_normalize_direct_api_candidate(candidate, query_meta, platform))
+        if len(candidates) >= max_results:
+            break
+    return candidates
+
+
+async def _fetch_direct_api_candidates(query: str, query_meta: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def _collect_platform(
+        platform: str,
+        fetcher,
+        per_query_limit: int = 20,
+        target_count: int = 15,
+    ) -> List[Dict[str, Any]]:
+        seen_urls: set = set()
+        collected: List[Dict[str, Any]] = []
+        for variant in _platform_query_variants(query, query_meta, platform):
+            try:
+                payload = await asyncio.to_thread(fetcher, variant, query_meta, per_query_limit)
+            except Exception as exc:
+                logger.warning("%s direct fetch failed for query '%s': %s", platform, variant, exc)
+                continue
+            if not isinstance(payload, list):
+                continue
+            for candidate in payload:
+                normalized = _normalize_direct_api_candidate(candidate, query_meta, platform)
+                profile_url = str(normalized.get("profile_url") or "").strip().lower()
+                if not profile_url or profile_url in seen_urls:
+                    continue
+                seen_urls.add(profile_url)
+                collected.append(normalized)
+                if len(collected) >= target_count:
+                    return collected
+
+        if len(collected) < target_count:
+            fallback_candidates = await _fetch_platform_web_fallback_candidates(
+                platform,
+                query,
+                query_meta,
+                max_results=max(8, target_count - len(collected)),
+            )
+            for normalized in fallback_candidates:
+                profile_url = str(normalized.get("profile_url") or "").strip().lower()
+                if not profile_url or profile_url in seen_urls:
+                    continue
+                seen_urls.add(profile_url)
+                collected.append(normalized)
+                if len(collected) >= target_count:
+                    return collected
+        return collected
+
+    github_payload, x_payload, stackoverflow_payload = await asyncio.gather(
+        _collect_platform("GitHub", _fetch_github_candidates),
+        _collect_platform("Twitter (X)", _fetch_x_candidates),
+        _collect_platform("Stack Overflow", _fetch_stackoverflow_candidates),
+        return_exceptions=True,
+    )
+
+    candidates: List[Dict[str, Any]] = []
+    for payload in (github_payload, x_payload, stackoverflow_payload):
+        if isinstance(payload, list):
+            candidates.extend(payload)
+    return candidates
+
+
+def _prune_talent_pool_memory() -> None:
+    cutoff = time.time() - TALENT_POOL_MEMORY_TTL_SECONDS
+    for memory in (_talent_pool_seen_urls, _talent_pool_signatures):
+        stale_queries = []
+        for query_key, values in memory.items():
+            fresh_values = {key: ts for key, ts in values.items() if ts >= cutoff}
+            if fresh_values:
+                memory[query_key] = fresh_values
+            else:
+                stale_queries.append(query_key)
+        for query_key in stale_queries:
+            memory.pop(query_key, None)
+
+
+def _recent_seen_urls(query: str) -> set:
+    _prune_talent_pool_memory()
+    return set((_talent_pool_seen_urls.get(_normalize_query(query)) or {}).keys())
+
+
+def _remember_talent_pool(query: str, candidates: List[Dict[str, Any]]) -> None:
+    query_key = _normalize_query(query)
+    now = time.time()
+    seen_map = _talent_pool_seen_urls.setdefault(query_key, {})
+    for candidate in candidates:
+        profile_url = str(candidate.get("profile_url") or "").strip().lower()
+        if profile_url:
+            seen_map[profile_url] = now
+
+    signature = "|".join(sorted(
+        str(candidate.get("profile_url") or "").strip().lower()
+        for candidate in candidates
+        if candidate.get("profile_url")
+    ))
+    if signature:
+        _talent_pool_signatures.setdefault(query_key, {})[signature] = now
+    _prune_talent_pool_memory()
+
+
+def _candidate_sort_key(candidate: Dict[str, Any]) -> Any:
+    return (
+        -int(candidate.get("score") or 0),
+        _talent_rng.random(),
+    )
+
+
+def _canonical_platform_label(platform: str) -> str:
+    normalized = str(platform or "").strip().lower()
+    if normalized in {"tech twitter", "twitter", "twitter (x)", "x"}:
+        return "Twitter (X)"
+    if normalized in {"hugging face", "huggingface"}:
+        return "Hugging Face"
+    return str(platform or "")
+
+
+def _is_target_talent_platform(platform: str) -> bool:
+    return _canonical_platform_label(platform) in TALENT_SCOUT_TARGET_PLATFORMS
+
+
+def _pick_from_tier(pool: List[Dict[str, Any]], target: int, used_urls: set) -> List[Dict[str, Any]]:
+    available = [
+        candidate for candidate in pool
+        if str(candidate.get("profile_url") or "").strip().lower() not in used_urls
+    ]
+    if not available or target <= 0:
+        return []
+    _talent_rng.shuffle(available)
+    return available[:target]
+
+
+def _sample_platform_candidates(
+    query: str,
+    candidates: List[Dict[str, Any]],
+    platform: str,
+    per_platform_limit: int,
+    exploration_factor: float,
+    used_urls: set,
+) -> List[Dict[str, Any]]:
+    seen_urls = _recent_seen_urls(query)
+    platform_candidates = [
+        candidate for candidate in candidates
+        if _canonical_platform_label(candidate.get("platform")) == platform
+    ]
+    unseen_candidates = [
+        candidate for candidate in platform_candidates
+        if str(candidate.get("profile_url") or "").strip().lower() not in seen_urls
+    ]
+    working_pool = unseen_candidates if len(unseen_candidates) >= per_platform_limit else platform_candidates
+    working_pool = sorted(working_pool, key=lambda item: -int(item.get("score") or 0))
+    if not working_pool:
+        return []
+
+    top_cut = max(per_platform_limit, int(len(working_pool) * (0.25 - (0.10 * exploration_factor))))
+    mid_cut = max(top_cut + 1, int(len(working_pool) * (0.70 - (0.10 * exploration_factor))))
+    top_tier = working_pool[:top_cut]
+    mid_tier = working_pool[top_cut:mid_cut]
+    tail_tier = working_pool[mid_cut:]
+
+    top_quota = max(1, int(round(per_platform_limit * (0.45 - (0.20 * exploration_factor)))))
+    mid_quota = max(1, int(round(per_platform_limit * (0.35 + (0.10 * exploration_factor)))))
+    tail_quota = max(1, per_platform_limit - top_quota - mid_quota)
+
+    selected: List[Dict[str, Any]] = []
+    for tier, quota in ((top_tier, top_quota), (mid_tier, mid_quota), (tail_tier, tail_quota)):
+        picks = _pick_from_tier(tier, quota, used_urls)
+        for candidate in picks:
+            profile_url = str(candidate.get("profile_url") or "").strip().lower()
+            used_urls.add(profile_url)
+            selected.append(candidate)
+
+    if len(selected) < per_platform_limit:
+        remaining_pool = working_pool[:max(per_platform_limit * 4, 15)]
+        extra = _pick_from_tier(remaining_pool, per_platform_limit - len(selected), used_urls)
+        for candidate in extra:
+            profile_url = str(candidate.get("profile_url") or "").strip().lower()
+            used_urls.add(profile_url)
+            selected.append(candidate)
+
+    return selected[:per_platform_limit]
+
+
+def _sample_platform_talent_pool(
+    query: str,
+    candidates: List[Dict[str, Any]],
+    total_limit: int = 20,
+    minimum_per_platform: int = 2,
+    exploration_factor: float = 0.5,
+) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+
+    platform_order = TALENT_SCOUT_PLATFORM_ORDER[:]
+    selected: List[Dict[str, Any]] = []
+    used_urls: set = set()
+    grouped: Dict[str, List[Dict[str, Any]]] = {
+        platform: [
+            candidate for candidate in candidates
+            if _canonical_platform_label(candidate.get("platform")) == platform
+        ]
+        for platform in platform_order
+    }
+
+    for platform in platform_order:
+        picks = _sample_platform_candidates(
+            query,
+            grouped.get(platform, []),
+            platform,
+            min(minimum_per_platform, len(grouped.get(platform, []))),
+            exploration_factor,
+            used_urls,
+        )
+        selected.extend(picks)
+
+    remaining_slots = max(0, total_limit - len(selected))
+    if remaining_slots:
+        all_remaining = [
+            candidate for candidate in candidates
+            if str(candidate.get("profile_url") or "").strip().lower() not in used_urls
+        ]
+        _talent_rng.shuffle(all_remaining)
+        all_remaining.sort(
+            key=lambda item: (
+                _talent_rng.random() * (0.55 + exploration_factor),
+                -(int(item.get("score") or 0) // 5),
+            )
+        )
+        for candidate in all_remaining[:remaining_slots]:
+            profile_url = str(candidate.get("profile_url") or "").strip().lower()
+            if not profile_url or profile_url in used_urls:
+                continue
+            used_urls.add(profile_url)
+            selected.append(candidate)
+
+    _talent_rng.shuffle(selected)
+    return selected[:total_limit]
+
+
+def _pick_best_candidate(
+    candidates: List[Dict[str, Any]],
+    predicate,
+    used_urls: set,
+    used_platforms: set,
+    prefer_new_platform: bool = True,
+) -> Optional[Dict[str, Any]]:
+    matching = [
+        candidate for candidate in candidates
+        if str(candidate.get("profile_url") or "").lower() not in used_urls and predicate(candidate)
+    ]
+    if not matching:
+        return None
+    if prefer_new_platform:
+        unseen_platform_matches = [
+            candidate for candidate in matching
+            if candidate.get("platform") not in used_platforms
+        ]
+        if unseen_platform_matches:
+            matching = unseen_platform_matches
+    matching.sort(key=_candidate_sort_key)
+    return matching[0]
+
+
+def _pick_diverse_talent_pool(query: str, candidates: List[Dict[str, Any]], limit: int = 8) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+
+    seen_urls = _recent_seen_urls(query)
+    unseen_candidates = [
+        candidate for candidate in candidates
+        if str(candidate.get("profile_url") or "").strip().lower() not in seen_urls
+    ]
+    working_pool = unseen_candidates if len(unseen_candidates) >= min(limit, 5) else candidates[:]
+    working_pool.sort(key=_candidate_sort_key)
+
+    selected: List[Dict[str, Any]] = []
+    used_urls: set = set()
+    used_platforms: set = set()
+    target_roles = ROLE_TAG_ORDER[:]
+    target_experience_levels = EXPERIENCE_LEVEL_ORDER[:]
+    _talent_rng.shuffle(target_roles)
+    _talent_rng.shuffle(target_experience_levels)
+
+    for role_tag in target_roles:
+        candidate = _pick_best_candidate(
+            working_pool,
+            lambda item, current_role=role_tag: item.get("role_tag") == current_role,
+            used_urls,
+            used_platforms,
+        )
+        if candidate:
+            selected.append(candidate)
+            used_urls.add(str(candidate.get("profile_url") or "").lower())
+            used_platforms.add(candidate.get("platform"))
+        if len(selected) >= limit:
+            return selected
+
+    for experience_level in target_experience_levels:
+        candidate = _pick_best_candidate(
+            working_pool,
+            lambda item, current_level=experience_level: item.get("experience_level") == current_level,
+            used_urls,
+            used_platforms,
+        )
+        if candidate:
+            selected.append(candidate)
+            used_urls.add(str(candidate.get("profile_url") or "").lower())
+            used_platforms.add(candidate.get("platform"))
+        if len(selected) >= limit:
+            return selected
+
+    platform_order = list({candidate.get("platform") for candidate in working_pool if candidate.get("platform")})
+    _talent_rng.shuffle(platform_order)
+    round_index = 0
+    while len(selected) < limit:
+        added_this_round = False
+        for platform in platform_order:
+            platform_candidates = [
+                candidate for candidate in working_pool
+                if candidate.get("platform") == platform and str(candidate.get("profile_url") or "").lower() not in used_urls
+            ]
+            platform_candidates.sort(key=_candidate_sort_key)
+            if round_index < len(platform_candidates):
+                candidate = platform_candidates[round_index]
+                selected.append(candidate)
+                used_urls.add(str(candidate.get("profile_url") or "").lower())
+                used_platforms.add(candidate.get("platform"))
+                added_this_round = True
+                if len(selected) >= limit:
+                    break
+        if not added_this_round:
+            break
+        round_index += 1
+
+    return selected[:limit]
+
+
+async def _fetch_alternative_platform_candidates(query: str, query_meta: Dict[str, Any], sessions: Dict[str, Any]) -> List[Dict[str, Any]]:
+    tasks = [
+        _fetch_direct_api_candidates(query, query_meta),
+        _fetch_broader_web_candidates(query, query_meta, sessions or {}),
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    candidates: List[Dict[str, Any]] = []
+    unique_by_url: Dict[str, Dict[str, Any]] = {}
+    for payload in results:
+        if isinstance(payload, list):
+            for item in payload:
+                if not isinstance(item, dict):
+                    continue
+                if "score" in item and "profile_url" in item:
+                    if _is_target_talent_platform(str(item.get("platform") or item.get("primary_platform") or "")):
+                        candidates.append(item)
+                else:
+                    normalized = _normalize_direct_api_candidate(item, query_meta, str(item.get("primary_platform") or "Web"))
+                    if _is_target_talent_platform(str(normalized.get("platform") or "")):
+                        candidates.append(normalized)
+
+    for candidate in candidates:
+        profile_url = str(candidate.get("profile_url") or "").strip().lower()
+        if not profile_url:
+            continue
+        existing = unique_by_url.get(profile_url)
+        if not existing or int(candidate.get("score") or 0) > int(existing.get("score") or 0):
+            unique_by_url[profile_url] = candidate
+    return list(unique_by_url.values())
+
+
+async def _enrich_talent_pool_with_groq(query: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    api_key = (os.environ.get("GROQ_API_KEY") or "").strip()
+    if not api_key or not candidates:
+        return candidates
+    return candidates
+
+
+def _candidate_retrieval_text(candidate: Dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(candidate.get("name") or ""),
+            str(candidate.get("platform") or ""),
+            str(candidate.get("role_tag") or ""),
+            str(candidate.get("experience_level") or ""),
+            " ".join(str(skill) for skill in (candidate.get("skills") or [])),
+            str(candidate.get("summary") or ""),
+            str(candidate.get("why_this_candidate") or ""),
+            " ".join(str(term) for term in (candidate.get("matched_terms") or [])),
+            " ".join(str(value) for value in (candidate.get("signals") or {}).values()),
+        ]
+    ).lower()
+
+
+def _retrieval_score_candidate(query_meta: Dict[str, Any], candidate: Dict[str, Any], exploration_factor: float) -> float:
+    retrieval_text = _candidate_retrieval_text(candidate)
+    query_tokens = query_meta.get("tokens", set())
+    overlap = sum(1 for token in query_tokens if token in retrieval_text)
+    skill_overlap = sum(1 for skill in (candidate.get("skills") or []) if str(skill).lower() in query_tokens)
+    base_score = float(candidate.get("score") or 0)
+    role_bonus = 0.0
+    inferred_role = query_meta.get("inferred_role")
+    candidate_role = str(candidate.get("role_tag") or "").lower()
+    if inferred_role == "engineer" and ("backend" in candidate_role or "systems" in candidate_role or "full-stack" in candidate_role):
+        role_bonus = 8.0
+    elif inferred_role == "product" and ("full-stack" in candidate_role or "frontend" in candidate_role):
+        role_bonus = 8.0
+    elif inferred_role == "growth" and ("communication" in retrieval_text or "creator" in retrieval_text):
+        role_bonus = 6.0
+
+    visibility_discount = 0.0
+    candidate_tag = str(candidate.get("candidate_tag") or "")
+    if candidate_tag == "Hidden Gem":
+        visibility_discount = 4.0 + (exploration_factor * 4.0)
+    elif candidate_tag == "Consistent Builder":
+        visibility_discount = 2.5
+
+    randomness_bonus = _talent_rng.uniform(0, 10) * max(0.15, exploration_factor)
+    retrieval_score = (
+        (base_score * 0.52)
+        + (overlap * 9.0)
+        + (skill_overlap * 6.0)
+        + role_bonus
+        + visibility_discount
+        + randomness_bonus
+    )
+    candidate["retrieval_score"] = round(retrieval_score, 2)
+    return retrieval_score
+
+
+def _select_rag_talent_pool(
+    query: str,
+    query_meta: Dict[str, Any],
+    candidates: List[Dict[str, Any]],
+    total_limit: int = 20,
+    minimum_per_platform: int = 2,
+    exploration_factor: float = 0.5,
+) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+
+    seen_urls = _recent_seen_urls(query)
+    working = candidates[:]
+    for candidate in working:
+        _retrieval_score_candidate(query_meta, candidate, exploration_factor)
+
+    platform_order = TALENT_SCOUT_PLATFORM_ORDER[:]
+    grouped: Dict[str, List[Dict[str, Any]]] = {platform: [] for platform in platform_order}
+    for candidate in working:
+        platform = _canonical_platform_label(candidate.get("platform"))
+        if platform in grouped:
+            grouped[platform].append(candidate)
+
+    for platform in platform_order:
+        grouped[platform].sort(
+            key=lambda item: (
+                -float(item.get("retrieval_score") or 0.0),
+                str(item.get("profile_url") or "").strip().lower() in seen_urls,
+                _talent_rng.random(),
+            )
+        )
+
+    selected: List[Dict[str, Any]] = []
+    used_urls: set = set()
+
+    for platform in platform_order:
+        available = grouped.get(platform, [])
+        quota = min(minimum_per_platform, len(available))
+        if quota <= 0:
+            continue
+        sample_window = available[:max(quota * 4, 8)]
+        _talent_rng.shuffle(sample_window)
+        picks = sample_window[:quota]
+        for candidate in picks:
+            profile_url = str(candidate.get("profile_url") or "").strip().lower()
+            if not profile_url or profile_url in used_urls:
+                continue
+            used_urls.add(profile_url)
+            selected.append(candidate)
+
+    remaining = [
+        candidate for candidate in working
+        if str(candidate.get("profile_url") or "").strip().lower() not in used_urls
+    ]
+    remaining.sort(
+        key=lambda item: (
+            -float(item.get("retrieval_score") or 0.0),
+            _talent_rng.random() * (0.45 + exploration_factor),
+        )
+    )
+
+    sample_window = remaining[:max((total_limit - len(selected)) * 5, 20)]
+    _talent_rng.shuffle(sample_window)
+    for candidate in sample_window:
+        if len(selected) >= total_limit:
+            break
+        profile_url = str(candidate.get("profile_url") or "").strip().lower()
+        if not profile_url or profile_url in used_urls:
+            continue
+        used_urls.add(profile_url)
+        selected.append(candidate)
+
+    _talent_rng.shuffle(selected)
+    return selected[:total_limit]
+
+
+async def _format_talent_pool_with_groq(query: str, candidates: List[Dict[str, Any]], exploration_factor: float) -> List[Dict[str, Any]]:
+    api_key = (os.environ.get("GROQ_API_KEY") or "").strip()
+    if not candidates:
+        return []
+
+    if not api_key:
+        return _fallback_profile_objects(candidates)
+
+    llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.9, groq_api_key=api_key)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+You are a developer talent discovery assistant.
+Return strict JSON only as an array of profile objects.
+
+Rules:
+- Preserve the same profile_link values you are given.
+- Keep the platform exactly as given.
+- Do not invent facts.
+- Prefer interesting signals over popularity.
+- Make descriptions 1-2 lines max.
+- unique_signal must be a single distinct signal, not a generic summary.
+- Maintain a mix of underrated builders, niche contributors, early-stage developers, and consistent low-visibility creators.
+- exploration_factor controls diversity emphasis: higher means more niche and less obvious.
+- Return up to the number of candidates provided; never fabricate extra profiles.
+- hidden_gem_score is required and must be an integer from 1 to 10.
+                """.strip(),
+            ),
+            (
+                "human",
+                """
+Query: {query}
+Exploration factor: {exploration_factor}
+
+Candidates:
+{candidates_json}
+
+Return this exact schema:
+[
+  {{
+    "name": "",
+    "username": "",
+    "platform": "",
+    "profile_link": "",
+    "description": "",
+    "unique_signal": "",
+    "hidden_gem_score": 1
+  }}
+]
+                """.strip(),
+            ),
+        ]
+    )
+    try:
+        messages = prompt.format_messages(
+            query=query,
+            exploration_factor=f"{exploration_factor:.2f}",
+            candidates_json=json.dumps(
+                [
+                    {
+                        "name": candidate.get("name"),
+                        "username": candidate.get("name"),
+                        "platform": _canonical_platform_label(candidate.get("platform")),
+                        "profile_link": candidate.get("profile_url"),
+                        "role_tag": candidate.get("role_tag"),
+                        "experience_level": candidate.get("experience_level"),
+                        "skills": candidate.get("skills"),
+                        "signals": candidate.get("signals"),
+                        "summary": candidate.get("summary"),
+                        "why_this_candidate": candidate.get("why_this_candidate"),
+                        "score": candidate.get("score"),
+                        "candidate_tag": candidate.get("candidate_tag"),
+                    }
+                    for candidate in candidates
+                ],
+                ensure_ascii=True,
+            ),
+        )
+        response = await llm.ainvoke(messages)
+        payload = json.loads(str(response.content or "[]"))
+        if isinstance(payload, list) and payload:
+            return _sanitize_formatted_talent_profiles(payload, candidates)
+    except Exception:
+        logger.exception("groq talent formatting failed")
+
+    return _fallback_profile_objects(candidates)
+
+
+def _fallback_hidden_gem_score(candidate: Dict[str, Any]) -> int:
+    return max(1, min(10, 11 - max(1, int(candidate.get("score", 50)) // 10)))
+
+
+def _candidate_username(candidate: Dict[str, Any]) -> str:
+    profile_url = str(candidate.get("profile_url") or "").strip()
+    if profile_url:
+        try:
+            parts = [part for part in urlparse(profile_url).path.split("/") if part]
+            if parts:
+                return parts[-1][:80]
+        except Exception:
+            pass
+    return str(candidate.get("name") or "")[:80]
+
+
+def _profile_output_from_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    description = str(candidate.get("summary") or "").strip()[:280]
+    unique_signal = str(candidate.get("why_this_candidate") or "").strip()[:220]
+    return {
+        "name": str(candidate.get("name") or "")[:120],
+        "username": _candidate_username(candidate),
+        "platform": _canonical_platform_label(candidate.get("platform", "")),
+        "profile_link": str(candidate.get("profile_url") or "").strip(),
+        "description": description or "Public developer profile surfaced from real platform data.",
+        "unique_signal": unique_signal or "Public proof-of-work signal identified during talent search.",
+        "hidden_gem_score": _fallback_hidden_gem_score(candidate),
+    }
+
+
+def _fallback_profile_objects(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_profile_output_from_candidate(candidate) for candidate in candidates[:20]]
+
+
+def _sanitize_formatted_talent_profiles(payload: List[Dict[str, Any]], candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    candidate_by_link = {
+        str(candidate.get("profile_url") or "").strip(): candidate
+        for candidate in candidates
+        if str(candidate.get("profile_url") or "").strip()
+    }
+    sanitized: List[Dict[str, Any]] = []
+    seen_links: set = set()
+
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        profile_link = str(item.get("profile_link") or "").strip()
+        source_candidate = candidate_by_link.get(profile_link)
+        if not source_candidate or profile_link in seen_links:
+            continue
+        seen_links.add(profile_link)
+        fallback = _profile_output_from_candidate(source_candidate)
+        hidden_gem_score = item.get("hidden_gem_score")
+        try:
+            hidden_gem_score = int(hidden_gem_score)
+        except Exception:
+            hidden_gem_score = fallback["hidden_gem_score"]
+        sanitized.append(
+            {
+                "name": str(item.get("name") or fallback["name"])[:120],
+                "username": str(item.get("username") or fallback["username"])[:80],
+                "platform": fallback["platform"],
+                "profile_link": profile_link,
+                "description": str(item.get("description") or fallback["description"])[:280],
+                "unique_signal": str(item.get("unique_signal") or fallback["unique_signal"])[:220],
+                "hidden_gem_score": max(1, min(10, hidden_gem_score)),
+            }
+        )
+
+    if len(sanitized) < min(len(candidates), 20):
+        for candidate in candidates:
+            profile_link = str(candidate.get("profile_url") or "").strip()
+            if not profile_link or profile_link in seen_links:
+                continue
+            seen_links.add(profile_link)
+            sanitized.append(_profile_output_from_candidate(candidate))
+            if len(sanitized) >= min(len(candidates), 20):
+                break
+
+    _talent_rng.shuffle(sanitized)
+    return sanitized[:20]
 
 
 @router.get("/api/chat/hatchup/history")
@@ -1199,60 +2573,75 @@ async def founder_talent_scout_search(payload: FounderScoutRequest, request: Req
             raise HTTPException(status_code=400, detail="Query is required.")
 
         query_meta = _parse_founder_query(query)
-        live_github_candidates: List[Dict[str, Any]] = []
-        broader_web_candidates: List[Dict[str, Any]] = []
-        data_source = "live_unavailable"
-        github_warning = None
-        web_warning = None
-
-        if query_meta["inferred_role"] == "engineer":
-            try:
-                live_github_candidates = await asyncio.to_thread(_fetch_github_candidates, query, query_meta, 12)
-            except Exception as exc:
-                github_warning = _error_text(exc)
-                logger.warning("GitHub candidate retrieval failed: %s", exc)
-
+        sessions: Dict[str, Any] = {}
         try:
             sessions = await get_mcp_sessions()
-            broader_web_candidates = await _fetch_broader_web_candidates(query, query_meta, sessions)
-        except Exception as exc:
-            web_warning = _error_text(exc)
-            logger.warning("Broader web candidate retrieval failed: %s", exc)
+        except Exception:
+            logger.exception("talent scout web session init failed")
+            sessions = {}
+        try:
+            raw_candidates = await _fetch_alternative_platform_candidates(query, query_meta, sessions)
+        except Exception:
+            logger.exception("talent scout candidate fetch failed")
+            raw_candidates = []
+        exploration_factor = round(_talent_rng.uniform(0.15, 0.95), 2)
 
-        combined = sorted(
-            live_github_candidates + broader_web_candidates,
-            key=lambda item: item["match_score"],
-            reverse=True,
-        )
+        selected_candidates: List[Dict[str, Any]] = []
+        existing_signatures = _talent_pool_signatures.get(_normalize_query(query), {})
+        try:
+            for _ in range(4):
+                pool = _select_rag_talent_pool(
+                    query,
+                    query_meta,
+                    raw_candidates,
+                    total_limit=20,
+                    minimum_per_platform=2,
+                    exploration_factor=exploration_factor,
+                )
+                signature = "|".join(sorted(
+                    str(candidate.get("profile_url") or "").strip().lower()
+                    for candidate in pool
+                    if candidate.get("profile_url")
+                ))
+                if pool and signature and signature not in existing_signatures:
+                    selected_candidates = pool
+                    break
+                _talent_rng.shuffle(raw_candidates)
 
-        ranked = combined[:30]
-        if ranked:
-            data_source = "multi_source_live"
-        else:
-            data_source = "live_unavailable"
+            if not selected_candidates:
+                selected_candidates = _select_rag_talent_pool(
+                    query,
+                    query_meta,
+                    raw_candidates,
+                    total_limit=20,
+                    minimum_per_platform=2,
+                    exploration_factor=exploration_factor,
+                )
+        except Exception:
+            logger.exception("talent scout sampling failed")
+            selected_candidates = raw_candidates[:20]
 
-        architecture = _founder_architecture_payload(query, query_meta)
-        architecture["architecture"]["data_sources"] = [
-            "GitHub APIs and repository metadata",
-            "Tavily web discovery across GitHub, LeetCode, Kaggle, GitLab, Hugging Face, blogs, and creator pages",
-            "X API or approved ingestion pipelines for public profile and discussion signals",
-            "Crawled personal websites, newsletters, and portfolio proof",
-            "Private recruiter feedback loop and founder interaction outcomes",
-        ]
-        return {
-            "query": query,
-            "query_interpretation": {
-                "inferred_role": query_meta["inferred_role"],
-                "startup_stage": query_meta["startup_stage"],
-            },
-            "candidates": ranked,
-            "data_source": data_source,
-            "github_warning": github_warning,
-            "web_warning": web_warning,
-            **architecture,
-        }
+        try:
+            selected_candidates = await _enrich_talent_pool_with_groq(query, selected_candidates)
+        except Exception:
+            logger.exception("talent scout enrichment failed")
+
+        try:
+            formatted_candidates = await _format_talent_pool_with_groq(query, selected_candidates, exploration_factor)
+        except Exception:
+            logger.exception("talent scout formatting failed")
+            formatted_candidates = _fallback_profile_objects(selected_candidates)
+
+        try:
+            _remember_talent_pool(query, selected_candidates)
+        except Exception:
+            logger.exception("talent scout memory update failed")
+
+        if not isinstance(formatted_candidates, list):
+            formatted_candidates = _fallback_profile_objects(selected_candidates)
+        return _sanitize_formatted_talent_profiles(formatted_candidates, selected_candidates)[:20]
     except HTTPException:
         raise
     except Exception:
         logger.exception("founder_talent_scout_search failed")
-        raise HTTPException(status_code=500, detail="Talent Scout failed. Please try again.")
+        return []

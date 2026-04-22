@@ -24,6 +24,11 @@
     function getSourceIcon(source) {
         const normalized = String(source || "").toLowerCase();
         if (normalized.includes("github")) return "GH";
+        if (normalized.includes("gitlab")) return "GL";
+        if (normalized.includes("bitbucket")) return "BB";
+        if (normalized.includes("stack")) return "SO";
+        if (normalized.includes("codepen")) return "CP";
+        if (normalized.includes("dribbble")) return "DB";
         if (normalized.includes("twitter") || normalized === "x") return "TW";
         if (normalized.includes("portfolio")) return "PF";
         if (normalized.includes("website")) return "WB";
@@ -31,9 +36,10 @@
     }
 
     function renderSourceSignal(candidate) {
-        const sourceName = escapeHtml(candidate.source || candidate.primary_platform || "Source");
+        const sourceName = escapeHtml(candidate.platform || candidate.source || candidate.primary_platform || "Source");
         const sourceUrl = getValidUrl(
-            candidate.profile_url
+            candidate.profile_link
+            || candidate.profile_url
             || candidate.profileUrl
             || candidate.source_url
             || candidate.sourceUrl
@@ -139,31 +145,31 @@
                     <div>
                         <div class="founder-rank-line">
                             <span class="founder-rank-badge">#${index + 1}</span>
-                            <span class="founder-platform-pill">${escapeHtml(candidate.primary_platform || candidate.source || "Web")}</span>
+                            <span class="founder-platform-pill">${escapeHtml(candidate.platform || candidate.primary_platform || candidate.source || "Web")}</span>
                         </div>
-                        <h4>${escapeHtml(candidate.name)}</h4>
-                        <p class="founder-role-line">${escapeHtml(candidate.role)} - ${escapeHtml(candidate.location || "Remote-friendly")}</p>
+                        <h4>${escapeHtml(candidate.name || candidate.username || "Unknown")}</h4>
+                        <p class="founder-role-line">${escapeHtml(candidate.username || candidate.role_tag || candidate.role || "Developer")}</p>
                     </div>
                     <div class="founder-score-stack">
-                        <strong>${escapeHtml(candidate.match_score || candidate.score || 0)}</strong>
-                        <span>match</span>
+                        <strong>${escapeHtml(candidate.platform || "API")}</strong>
+                        <span>source</span>
                     </div>
                 </div>
 
-                <p class="founder-summary">${escapeHtml(candidate.summary)}</p>
+                <p class="founder-summary">${escapeHtml(candidate.description || candidate.summary || "")}</p>
 
                 ${renderSourceSignal(candidate)}
 
                 <div class="founder-tag-row">
-                    ${(candidate.tags || []).map((tag) => `<span class="founder-tag">${escapeHtml(tag)}</span>`).join("")}
+                    ${(candidate.skills || candidate.tags || []).map((tag) => `<span class="founder-tag">${escapeHtml(tag)}</span>`).join("")}
+                    ${candidate.candidate_tag ? `<span class="founder-tag">${escapeHtml(candidate.candidate_tag)}</span>` : ""}
                 </div>
 
                 <div class="founder-evidence-block">
-                    <p class="founder-evidence-title">Why matched</p>
+                    <p class="founder-evidence-title">Why this candidate</p>
                     <ul class="founder-list founder-tight-list">
-                        <li>Role fit: ${escapeHtml(candidate.role)}</li>
-                        <li>Source signal: ${escapeHtml(candidate.primary_platform || candidate.source || "Web")}</li>
-                        <li>Matched terms: ${escapeHtml((candidate.matchedTerms || []).join(", ") || "broad startup relevance")}</li>
+                        <li>${escapeHtml(candidate.unique_signal || candidate.why_this_candidate || "Strong public proof-of-work signal.")}</li>
+                        <li>${escapeHtml(candidate.description || candidate.summary || "Interesting developer signal from this platform.")}</li>
                     </ul>
                 </div>
             </article>
@@ -212,17 +218,14 @@
                     return response.json();
                 })
                 .then((data) => {
-                    const results = Array.isArray(data.candidates) ? data.candidates : [];
+                    const results = Array.isArray(data) ? data : (Array.isArray(data.candidates) ? data.candidates : []);
                     if (!results.length) {
                         renderEmptyState(resultsEl, statusEl, query);
                         return;
                     }
                     renderResults(resultsEl, statusEl, query, results);
                     if (statusEl) {
-                        const source = data.data_source === "multi_source_live"
-                            ? "Live GitHub + X + Kaggle + SerpAPI + Reddit"
-                            : "Live sources unavailable";
-                        statusEl.textContent = `Showing ${results.length} Talent Scout results for "${query}". Source: ${source}.`;
+                        statusEl.textContent = `Showing ${results.length} Talent Scout results for "${query}".`;
                     }
                 })
                 .catch((error) => {
