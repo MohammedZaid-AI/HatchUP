@@ -53,6 +53,7 @@ for router_module in (
     "routers.chat",
     "routers.founder",
     "routers.memo",
+    "routers.talent_scout",
 ):
     include_router_safely(router_module)
 
