@@ -739,6 +739,12 @@ body.mode-loading .mode-loader {
     gap: 14px;
 }
 
+.home-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
 .home-info-card,
 .home-audience-card {
     border: 1px solid #e2e8f0;
@@ -747,19 +753,54 @@ body.mode-loading .mode-loader {
     padding: 18px 18px 16px;
 }
 
+.home-mode-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: 20px;
+}
+
+.home-mode-card.founder {
+    background: linear-gradient(180deg, #fffdf7 0%, #fff7ed 100%);
+    border-color: #fed7aa;
+}
+
+.home-mode-label {
+    margin: 0 0 10px;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 700;
+}
+
 .home-info-card h3,
-.home-audience-card h3 {
+.home-audience-card h3,
+.home-mode-card h3 {
     margin: 0;
     font-size: 1rem;
     color: #0f172a;
 }
 
 .home-info-card p,
-.home-audience-card p {
+.home-audience-card p,
+.home-mode-card p {
     margin: 9px 0 0;
     color: #475569;
     line-height: 1.56;
     font-size: 0.92rem;
+}
+
+.home-mode-list {
+    margin: 14px 0 0;
+    padding-left: 18px;
+    color: #334155;
+}
+
+.home-mode-list li {
+    margin: 8px 0 0;
+    line-height: 1.55;
+    font-size: 0.91rem;
 }
 
 .home-flow {
@@ -2874,6 +2915,7 @@ img.logo-img {
     }
 
     .home-capability-grid,
+    .home-mode-grid,
     .home-audience-grid {
         grid-template-columns: 1fr;
     }
